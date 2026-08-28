@@ -1,0 +1,179 @@
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Alert, FlatList, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { api, ApiError, type ApiStockWarning } from "../../api";
+import { printThermalTicket, selectThermalPrinter, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
+
+type Flavor = { id: number; name: string };
+type Modifier = { id: number; name: string; price: string | number; type: string };
+type ModifierRule = { modifier_id: number; allowed: boolean; price_override?: string | number | null; modifier: Modifier };
+type Variant = { id: number; name: string; price: string | number; max_flavors: number; allows_half_and_half: boolean; modifier_rules: ModifierRule[] };
+type Product = { id: number; product_category_id?: number | null; name: string; type: string; category?: { id: number; name: string } | null; flavors: Flavor[]; variants: Variant[] };
+type Category = { id: number; name: string };
+type ComboOption = { product_flavor_id?: number | null; modifier_id?: number | null; flavor?: Flavor | null; modifier?: Modifier | null };
+type ComboItem = { id: number; product_variant_id: number; quantity: string | number; flavor_required: boolean; variant: { id: number; name: string; product: { id: number; name: string } }; options: ComboOption[] };
+type Combo = { id: number; name: string; price: string | number; items: ComboItem[] };
+type CustomerAddress = { id: number; label: string; address: string; references?: string | null; map_url?: string | null; delivery_zone?: string | null; is_default: boolean };
+type Customer = { id: number; name: string; phone: string; addresses: CustomerAddress[] };
+type CustomerPage = { data: Customer[] };
+type OperationalSettings = { half_and_half_extra: number; additional_wing_flavor_extra: number; max_wing_flavors: number; delivery_zones: { name: string; fee: number; active: boolean }[]; payment_methods: { key: "cash" | "transfer"; label: string; active: boolean }[] };
+type Order = { id: number; daily_number: number; status: string; stock_warnings?: ApiStockWarning[]; total: string | number };
+type ProductLine = { key: string; kind: "product"; variantId: number; name: string; unitPrice: number; quantity: number; flavorIds: number[]; flavorNames: string[]; modifierIds: number[]; modifierNames: string[]; notes: string };
+type ComboComponent = { combo_item_id: number; flavor_ids: number[]; modifier_ids: number[]; notes?: string };
+type ComboLine = { key: string; kind: "combo"; comboId: number; name: string; unitPrice: number; quantity: number; components: ComboComponent[]; summary: string[]; notes: string };
+type CartLine = ProductLine | ComboLine;
+type PendingKitchen = { order: Order; warnings: ApiStockWarning[]; error: string };
+
+const defaultSettings: OperationalSettings = { half_and_half_extra: 0, additional_wing_flavor_extra: 0, max_wing_flavors: 2, delivery_zones: [], payment_methods: [{ key: "cash", label: "Efectivo", active: true }, { key: "transfer", label: "Transferencia", active: true }] };
+
+function confirmAction(message: string): Promise<boolean> {
+  if (Platform.OS === "web") return Promise.resolve(globalThis.confirm(message));
+  return new Promise((resolve) => Alert.alert("Confirmar", message, [{ text: "Cancelar", style: "cancel", onPress: () => resolve(false) }, { text: "Aceptar", onPress: () => resolve(true) }], { cancelable: true, onDismiss: () => resolve(false) }));
+}
+function newKey(): string { return `pos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`; }
+function scheduledIso(value: string): string | undefined {
+  const input = value.trim(); if (!input) return undefined;
+  const normalized = input.includes("T") ? input : input.replace(" ", "T");
+  const date = new Date(normalized);
+  if (!Number.isFinite(date.getTime()) || date.getTime() <= Date.now()) throw new Error("La fecha programada debe ser válida, futura y usar AAAA-MM-DD HH:mm.");
+  return date.toISOString();
+}
+
+export function PosScreen({ token, isAdministrator, canOverrideStock }: { token: string; isAdministrator: boolean; canOverrideStock: boolean }) {
+  const { width } = useWindowDimensions();
+  const compact = width < 900;
+  const [products, setProducts] = useState<Product[]>([]); const [categories, setCategories] = useState<Category[]>([]); const [combos, setCombos] = useState<Combo[]>([]); const [customers, setCustomers] = useState<Customer[]>([]); const [settings, setSettings] = useState(defaultSettings);
+  const [search, setSearch] = useState(""); const [categoryId, setCategoryId] = useState<number | null>(null); const [cart, setCart] = useState<CartLine[]>([]); const [customerId, setCustomerId] = useState<number | null>(null); const [addressId, setAddressId] = useState<number | null>(null);
+  const [orderType, setOrderType] = useState("pickup"); const [recipient, setRecipient] = useState(""); const [phone, setPhone] = useState(""); const [address, setAddress] = useState(""); const [references, setReferences] = useState(""); const [mapUrl, setMapUrl] = useState(""); const [zone, setZone] = useState("");
+  const [payment, setPayment] = useState("cash"); const [cashAmount, setCashAmount] = useState(""); const [collectOnDelivery, setCollectOnDelivery] = useState(false); const [scheduledAt, setScheduledAt] = useState(""); const [notes, setNotes] = useState(""); const [idempotencyKey, setIdempotencyKey] = useState(newKey); const [pendingKitchen, setPendingKitchen] = useState<PendingKitchen | null>(null); const [lastOrder, setLastOrder] = useState<Order | null>(null); const [message, setMessage] = useState(""); const [busy, setBusy] = useState(true);
+  const sending = useRef(false);
+
+  const load = useCallback(async () => {
+    setBusy(true); setMessage("");
+    try {
+      const [nextProducts, nextCategories, nextCombos, customerPage, nextSettings] = await Promise.all([
+        api<Product[]>("/products", token), api<Category[]>("/product-categories", token), api<Combo[]>("/combos", token), api<CustomerPage>("/customers?active=1", token), api<OperationalSettings>("/operational-settings", token),
+      ]);
+      setProducts(nextProducts); setCategories(nextCategories); setCombos(nextCombos); setCustomers(customerPage.data); setSettings(nextSettings);
+      const active = nextSettings.payment_methods.filter((method) => method.active); if (!active.some((method) => method.key === payment)) setPayment(active[0]?.key ?? "cash");
+    } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
+  }, [token]);
+  useEffect(() => { load(); }, [load]);
+
+  const selectedCustomer = customers.find((customer) => customer.id === customerId) ?? null;
+  const deliveryFee = orderType === "delivery" ? Number(settings.delivery_zones.find((item) => item.active && item.name === zone)?.fee ?? 0) : 0;
+  const subtotal = cart.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
+  const total = subtotal + deliveryFee;
+  const visibleProducts = products.filter((product) => (!categoryId || product.product_category_id === categoryId) && (!search.trim() || product.name.toLowerCase().includes(search.trim().toLowerCase()) || product.variants.some((variant) => variant.name.toLowerCase().includes(search.trim().toLowerCase()))));
+
+  function chooseCustomer(customer: Customer | null) {
+    setCustomerId(customer?.id ?? null); const selected = customer?.addresses.find((item) => item.is_default) ?? customer?.addresses[0]; chooseAddress(selected ?? null, customer ?? null);
+  }
+  function chooseAddress(selected: CustomerAddress | null, customer = selectedCustomer) {
+    setAddressId(selected?.id ?? null); setRecipient(customer?.name ?? ""); setPhone(customer?.phone ?? ""); setAddress(selected?.address ?? ""); setReferences(selected?.references ?? ""); setMapUrl(selected?.map_url ?? ""); setZone(selected?.delivery_zone ?? "");
+  }
+  function addProduct(product: Product, variant: Variant, flavorIds: number[], modifierIds: number[], itemNotes: string) {
+    const flavors = product.flavors.filter((flavor) => flavorIds.includes(flavor.id)); const rules = variant.modifier_rules.filter((rule) => modifierIds.includes(rule.modifier_id));
+    const flavorExtra = flavorIds.length > 1 ? product.type === "pizza" ? Number(settings.half_and_half_extra) : product.type === "wings" ? Number(settings.additional_wing_flavor_extra) * (flavorIds.length - 1) : 0 : 0;
+    const modifierExtra = rules.reduce((sum, rule) => sum + Number(rule.price_override ?? rule.modifier.price), 0); const key = `product-${variant.id}-${[...flavorIds].sort().join(".")}-${[...modifierIds].sort().join(".")}-${itemNotes}`;
+    setCart((current) => { const found = current.find((line) => line.key === key); return found ? current.map((line) => line.key === key ? { ...line, quantity: line.quantity + 1 } : line) : [...current, { key, kind: "product", variantId: variant.id, name: `${product.name} · ${variant.name}`, unitPrice: Number(variant.price) + flavorExtra + modifierExtra, quantity: 1, flavorIds, flavorNames: flavors.map((flavor) => flavor.name), modifierIds, modifierNames: rules.map((rule) => rule.modifier.name), notes: itemNotes.trim() }]; });
+  }
+  function addCombo(combo: Combo, components: ComboComponent[], summary: string[]) {
+    const extras = components.reduce((totalExtra, selection) => {
+      const comboItem = combo.items.find((item) => item.id === selection.combo_item_id);
+      const product = products.find((entry) => entry.variants.some((variant) => variant.id === comboItem?.product_variant_id));
+      const variant = product?.variants.find((entry) => entry.id === comboItem?.product_variant_id);
+      if (!comboItem || !product || !variant) return totalExtra;
+      const flavorExtra = selection.flavor_ids.length > 1
+        ? product.type === "pizza"
+          ? Number(settings.half_and_half_extra)
+          : product.type === "wings"
+            ? Number(settings.additional_wing_flavor_extra) * (selection.flavor_ids.length - 1)
+            : 0
+        : 0;
+      const modifierExtra = variant.modifier_rules
+        .filter((rule) => selection.modifier_ids.includes(rule.modifier_id))
+        .reduce((sum, rule) => sum + Number(rule.price_override ?? rule.modifier.price), 0);
+      return totalExtra + (flavorExtra + modifierExtra) * Number(comboItem.quantity);
+    }, 0);
+    const key = `combo-${combo.id}-${JSON.stringify(components)}`; setCart((current) => { const found = current.find((line) => line.key === key); return found ? current.map((line) => line.key === key ? { ...line, quantity: line.quantity + 1 } : line) : [...current, { key, kind: "combo", comboId: combo.id, name: combo.name, unitPrice: Number(combo.price) + extras, quantity: 1, components, summary, notes: "" }]; });
+  }
+  function changeQuantity(key: string, delta: number) { setCart((current) => current.map((line) => line.key === key ? { ...line, quantity: line.quantity + delta } : line).filter((line) => line.quantity > 0)); }
+  function reset() { setCart([]); setCustomerId(null); setAddressId(null); setOrderType("pickup"); setRecipient(""); setPhone(""); setAddress(""); setReferences(""); setMapUrl(""); setZone(""); setPayment(settings.payment_methods.find((method) => method.active)?.key ?? "cash"); setCashAmount(""); setCollectOnDelivery(false); setScheduledAt(""); setNotes(""); setIdempotencyKey(newKey()); }
+
+  async function sendToKitchen(order: Order, allow = false): Promise<boolean> {
+    try { const sent = await api<Order>(`/orders/${order.id}/send-to-kitchen`, token, { method: "POST", body: allow ? JSON.stringify({ allow_stock_shortage: true }) : undefined }); setPendingKitchen(null); setLastOrder(sent); setMessage(`Orden #${sent.daily_number} enviada a cocina.`); return true; }
+    catch (error) { if (error instanceof ApiError && error.code === "stock_shortage") { setPendingKitchen({ order, warnings: error.stockWarnings, error: error.message }); setMessage(canOverrideStock ? "La orden fue creada; autoriza el faltante para enviarla a cocina." : "La orden fue creada, pero requiere autorización administrativa por falta de inventario."); return false; } setPendingKitchen({ order, warnings: [], error: (error as Error).message }); setMessage("La orden fue creada, pero su envío a cocina falló. Reintenta esta misma orden."); return false; }
+  }
+  async function retryKitchen() { if (!pendingKitchen || sending.current) return; const allow = pendingKitchen.warnings.length > 0; if (allow && !canOverrideStock) { setMessage("Inicia sesión con un usuario que tenga permiso para autorizar faltantes."); return; } if (allow && !await confirmAction("Se consumirá la existencia disponible y quedará auditado el faltante. ¿Continuar?")) return; sending.current = true; setBusy(true); try { await sendToKitchen(pendingKitchen.order, allow); } finally { sending.current = false; setBusy(false); } }
+
+  async function submit(status: "draft" | "pending_payment" | "confirmed") {
+    if (sending.current || !cart.length) return;
+    if (orderType === "delivery" && (!recipient.trim() || !phone.trim() || !address.trim())) { setMessage("Completa nombre, teléfono y dirección del envío."); return; }
+    if (orderType === "delivery" && settings.delivery_zones.some((item) => item.active) && !zone) { setMessage("Selecciona una zona de entrega."); return; }
+    let schedule: string | undefined; try { schedule = scheduledIso(scheduledAt); } catch (error) { setMessage((error as Error).message); return; }
+    const cash = Number(cashAmount); if (status === "confirmed" && payment === "mixed" && (!Number.isFinite(cash) || cash <= 0 || cash >= total)) { setMessage("En pago mixto, el efectivo debe ser mayor que cero y menor que el total."); return; }
+    if (status === "confirmed" && !collectOnDelivery && !await confirmAction(`¿Confirmas el pedido por $${total.toFixed(2)}${schedule ? " programado" : ""}?`)) return;
+    sending.current = true; setBusy(true); setMessage("");
+    try {
+      const payments = status !== "confirmed" || payment === "courtesy" || collectOnDelivery ? [] : payment === "mixed" ? [{ method: "cash", amount: cash }, { method: "transfer", amount: total - cash }] : [{ method: payment, amount: total }];
+      const order = await api<Order>("/orders", token, { method: "POST", headers: { "Idempotency-Key": idempotencyKey }, body: JSON.stringify({ status, type: orderType, customer_id: customerId, scheduled_at: schedule, courtesy: payment === "courtesy", collect_on_delivery: collectOnDelivery, notes: notes.trim() || undefined, delivery: orderType === "delivery" ? { recipient: recipient.trim(), phone: phone.trim(), address: address.trim(), references: references.trim() || undefined, map_url: mapUrl.trim() || undefined, delivery_zone: zone || undefined } : undefined, items: cart.map((line) => line.kind === "product" ? { product_variant_id: line.variantId, quantity: line.quantity, flavor_ids: line.flavorIds, modifier_ids: line.modifierIds, notes: line.notes || undefined } : { combo_id: line.comboId, quantity: line.quantity, components: line.components, notes: line.notes || undefined }), payments }) });
+      setLastOrder(order); reset(); if (status === "confirmed" && !schedule) { setPendingKitchen({ order, warnings: [], error: "Envío pendiente" }); await sendToKitchen(order); } else setMessage(`Orden #${order.daily_number} ${status === "draft" ? "guardada como borrador" : status === "pending_payment" ? "pendiente de pago" : "programada"}.`);
+    } catch (error) { setMessage((error as Error).message); } finally { sending.current = false; setBusy(false); }
+  }
+
+  if (busy && !products.length) return <ActivityIndicator color="#cf4b32" style={styles.loader} />;
+  return <View style={[styles.layout, compact && styles.layoutCompact]}>
+    <View style={styles.catalog}>
+      <View style={styles.card}><View style={styles.inline}><TextInput style={[styles.input, styles.flex]} value={search} onChangeText={setSearch} placeholder="Buscar producto o tamaño" /><Pressable style={styles.outlineButton} onPress={load}><Text style={styles.outlineText}>Actualizar</Text></Pressable></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actions}><Pressable style={[styles.choice, categoryId === null && styles.choiceActive]} onPress={() => setCategoryId(null)}><Text>Todo</Text></Pressable>{categories.map((category) => <Pressable key={category.id} style={[styles.choice, categoryId === category.id && styles.choiceActive]} onPress={() => setCategoryId(category.id)}><Text>{category.name}</Text></Pressable>)}</ScrollView></View>
+      <FlatList data={visibleProducts} keyExtractor={(item) => `p-${item.id}`} renderItem={({ item }) => <ProductCard product={item} settings={settings} onAdd={addProduct} />} ListEmptyComponent={<Text style={styles.muted}>No hay productos activos para este filtro.</Text>} />
+      {!!combos.length && <View style={styles.card}><Text style={styles.title}>Paquetes</Text>{combos.map((combo) => <ComboCard key={combo.id} combo={combo} products={products} settings={settings} onAdd={addCombo} />)}</View>}
+    </View>
+    <View style={[styles.cart, compact && styles.cartCompact]}>
+      <Text style={styles.title}>Pedido actual</Text>
+      {cart.map((line) => <View style={styles.cartLine} key={line.key}><View style={styles.flex}><Text style={styles.rowTitle}>{line.quantity} × {line.name}</Text><Text style={styles.muted}>{line.kind === "product" ? [...line.flavorNames, ...line.modifierNames].join(" · ") : line.summary.join(" · ")}</Text><Text>${(line.unitPrice * line.quantity).toFixed(2)}</Text></View><View style={styles.actions}><Pressable style={styles.quantity} onPress={() => changeQuantity(line.key, -1)}><Text>−</Text></Pressable><Pressable style={styles.quantity} onPress={() => changeQuantity(line.key, 1)}><Text>＋</Text></Pressable></View></View>)}
+      <Text style={styles.label}>Cliente opcional</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actions}><Pressable style={[styles.choice, customerId === null && styles.choiceActive]} onPress={() => chooseCustomer(null)}><Text>Sin cliente</Text></Pressable>{customers.map((customer) => <Pressable key={customer.id} style={[styles.choice, customerId === customer.id && styles.choiceActive]} onPress={() => chooseCustomer(customer)}><Text>{customer.name}</Text></Pressable>)}</ScrollView>
+      {!!selectedCustomer?.addresses.length && <><Text style={styles.label}>Dirección guardada</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actions}>{selectedCustomer.addresses.map((item) => <Pressable key={item.id} style={[styles.choice, addressId === item.id && styles.choiceActive]} onPress={() => chooseAddress(item)}><Text>{item.label}</Text></Pressable>)}</ScrollView></>}
+      <View style={styles.actions}>{[["pickup", "Recoger"], ["whatsapp", "WhatsApp"], ["delivery", "Domicilio"], ["dine_in", "Local"]].map(([key, label]) => <Pressable key={key} style={[styles.choice, orderType === key && styles.choiceActive]} onPress={() => { setOrderType(key); if (key !== "delivery") setCollectOnDelivery(false); }}><Text>{label}</Text></Pressable>)}</View>
+      {orderType === "delivery" && <View style={styles.section}><TextInput style={styles.input} value={recipient} onChangeText={setRecipient} placeholder="Nombre de quien recibe" /><TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Teléfono" /><TextInput style={styles.input} value={address} onChangeText={setAddress} placeholder="Dirección" /><TextInput style={styles.input} value={references} onChangeText={setReferences} placeholder="Referencias" /><TextInput style={styles.input} value={mapUrl} onChangeText={setMapUrl} autoCapitalize="none" placeholder="Enlace de mapa" /><Text style={styles.label}>Zona</Text><View style={styles.actions}>{settings.delivery_zones.filter((item) => item.active).map((item) => <Pressable key={item.name} style={[styles.choice, zone === item.name && styles.choiceActive]} onPress={() => setZone(item.name)}><Text>{item.name} · ${Number(item.fee).toFixed(2)}</Text></Pressable>)}</View></View>}
+      <TextInput style={styles.input} value={scheduledAt} onChangeText={setScheduledAt} placeholder="Programar: AAAA-MM-DD HH:mm" /><TextInput style={styles.input} value={notes} onChangeText={setNotes} placeholder="Notas generales o de preparación" />
+      <Text style={styles.label}>Pago</Text><View style={styles.actions}>{settings.payment_methods.filter((method) => method.active).map((method) => <Pressable key={method.key} style={[styles.choice, payment === method.key && !collectOnDelivery && styles.choiceActive]} onPress={() => { setPayment(method.key); setCollectOnDelivery(false); }}><Text>{method.label}</Text></Pressable>)}{settings.payment_methods.filter((method) => method.active).length === 2 && <Pressable style={[styles.choice, payment === "mixed" && styles.choiceActive]} onPress={() => { setPayment("mixed"); setCollectOnDelivery(false); }}><Text>Mixto</Text></Pressable>}{isAdministrator && <Pressable style={[styles.choice, payment === "courtesy" && styles.choiceActive]} onPress={() => { setPayment("courtesy"); setCollectOnDelivery(false); }}><Text>Cortesía</Text></Pressable>}{orderType === "delivery" && <Pressable style={[styles.choice, collectOnDelivery && styles.choiceActive]} onPress={() => setCollectOnDelivery(!collectOnDelivery)}><Text>Cobrar al entregar</Text></Pressable>}</View>
+      {payment === "mixed" && !collectOnDelivery && <TextInput style={styles.input} value={cashAmount} onChangeText={setCashAmount} keyboardType="decimal-pad" placeholder="Monto en efectivo" />}
+      <Text style={styles.total}>Subtotal ${subtotal.toFixed(2)}{deliveryFee ? ` + envío $${deliveryFee.toFixed(2)}` : ""}{"\n"}Total ${total.toFixed(2)}</Text>
+      {!!message && <Text style={styles.notice}>{message}</Text>}
+      {pendingKitchen && <View style={styles.warning}><Text style={styles.rowTitle}>Orden #{pendingKitchen.order.daily_number} pendiente de cocina</Text>{pendingKitchen.warnings.map((warning) => <Text key={warning.ingredient_id ?? warning.name}>{warning.name}: faltan {warning.shortage}</Text>)}{!pendingKitchen.warnings.length && <Text>{pendingKitchen.error}</Text>}<Pressable style={styles.primary} disabled={busy || (pendingKitchen.warnings.length > 0 && !canOverrideStock)} onPress={retryKitchen}><Text style={styles.primaryText}>{pendingKitchen.warnings.length ? "Autorizar faltante y enviar" : "Reintentar envío"}</Text></Pressable></View>}
+      {lastOrder && <DocumentActions token={token} order={lastOrder} />}
+      <Pressable disabled={busy || !cart.length || !!pendingKitchen} style={[styles.primary, (busy || !cart.length || !!pendingKitchen) && styles.disabled]} onPress={() => submit("confirmed")}><Text style={styles.primaryText}>{scheduledAt.trim() ? "Confirmar pedido programado" : "Confirmar y enviar a cocina"}</Text></Pressable>
+      <View style={styles.actions}><Pressable disabled={busy || !cart.length} style={styles.outlineButton} onPress={() => submit("pending_payment")}><Text style={styles.outlineText}>Pendiente de pago</Text></Pressable><Pressable disabled={busy || !cart.length} style={styles.outlineButton} onPress={() => submit("draft")}><Text style={styles.outlineText}>Borrador / cotización</Text></Pressable></View>
+    </View>
+  </View>;
+}
+
+function ProductCard({ product, settings, onAdd }: { product: Product; settings: OperationalSettings; onAdd: (product: Product, variant: Variant, flavorIds: number[], modifierIds: number[], notes: string) => void }) {
+  const [flavors, setFlavors] = useState<Record<number, number[]>>({}); const [modifiers, setModifiers] = useState<Record<number, number[]>>({}); const [notes, setNotes] = useState<Record<number, string>>({});
+  function toggleFlavor(variant: Variant, id: number) { const max = product.type === "wings" ? Math.min(variant.max_flavors, settings.max_wing_flavors) : variant.max_flavors; setFlavors((current) => { const selected = current[variant.id] ?? []; const next = selected.includes(id) ? selected.filter((value) => value !== id) : max <= 1 ? [id] : [...selected, id].slice(-max); return { ...current, [variant.id]: next }; }); }
+  function toggleModifier(variantId: number, id: number) { setModifiers((current) => ({ ...current, [variantId]: (current[variantId] ?? []).includes(id) ? current[variantId].filter((value) => value !== id) : [...(current[variantId] ?? []), id] })); }
+  return <View style={styles.card}><Text style={styles.title}>{product.name}</Text><Text style={styles.muted}>{product.category?.name ?? product.type}</Text>{product.variants.map((variant) => { const selectedFlavors = flavors[variant.id] ?? []; const selectedModifiers = modifiers[variant.id] ?? []; const needsFlavor = product.flavors.length > 0 && !selectedFlavors.length; return <View style={styles.variant} key={variant.id}><View style={styles.headingRow}><Text style={styles.rowTitle}>{variant.name}</Text><Text style={styles.price}>${Number(variant.price).toFixed(2)}</Text></View>{!!product.flavors.length && <View style={styles.actions}>{product.flavors.map((flavor) => <Pressable key={flavor.id} style={[styles.choice, selectedFlavors.includes(flavor.id) && styles.choiceActive]} onPress={() => toggleFlavor(variant, flavor.id)}><Text>{flavor.name}</Text></Pressable>)}</View>}{!!variant.modifier_rules.length && <View style={styles.actions}>{variant.modifier_rules.map((rule) => <Pressable key={rule.modifier_id} style={[styles.choice, selectedModifiers.includes(rule.modifier_id) && styles.choiceActive]} onPress={() => toggleModifier(variant.id, rule.modifier_id)}><Text>{rule.modifier.name} +${Number(rule.price_override ?? rule.modifier.price).toFixed(2)}</Text></Pressable>)}</View>}<TextInput style={styles.input} value={notes[variant.id] ?? ""} onChangeText={(value) => setNotes((current) => ({ ...current, [variant.id]: value }))} placeholder="Notas del producto" /><Pressable disabled={needsFlavor} style={[styles.primary, needsFlavor && styles.disabled]} onPress={() => onAdd(product, variant, selectedFlavors, selectedModifiers, notes[variant.id] ?? "")}><Text style={styles.primaryText}>Agregar {variant.name}</Text></Pressable></View>; })}</View>;
+}
+
+function ComboCard({ combo, products, settings, onAdd }: { combo: Combo; products: Product[]; settings: OperationalSettings; onAdd: (combo: Combo, components: ComboComponent[], summary: string[]) => void }) {
+  const [flavors, setFlavors] = useState<Record<number, number[]>>({}); const [modifiers, setModifiers] = useState<Record<number, number[]>>({}); const [notes, setNotes] = useState<Record<number, string>>({});
+  function choices(item: ComboItem) { const product = products.find((entry) => entry.variants.some((variant) => variant.id === item.product_variant_id)); const optionFlavors = item.options.filter((option) => option.flavor).map((option) => option.flavor as Flavor); const optionModifiers = item.options.filter((option) => option.modifier).map((option) => option.modifier as Modifier); return { availableFlavors: optionFlavors.length ? optionFlavors : product?.flavors ?? [], availableModifiers: optionModifiers }; }
+  const incomplete = combo.items.some((item) => item.flavor_required && !(flavors[item.id]?.length));
+  function add() { const components = combo.items.map((item) => ({ combo_item_id: item.id, flavor_ids: flavors[item.id] ?? [], modifier_ids: modifiers[item.id] ?? [], notes: notes[item.id]?.trim() || undefined })); const summary = combo.items.map((item) => { const available = choices(item); const flavorNames = available.availableFlavors.filter((flavor) => (flavors[item.id] ?? []).includes(flavor.id)).map((flavor) => flavor.name); return `${Number(item.quantity)}× ${item.variant.product.name} ${item.variant.name}${flavorNames.length ? ` (${flavorNames.join("/")})` : ""}`; }); onAdd(combo, components, summary); }
+  return <View style={styles.combo}><View style={styles.headingRow}><Text style={styles.rowTitle}>{combo.name}</Text><Text style={styles.price}>Desde ${Number(combo.price).toFixed(2)}</Text></View>{combo.items.map((item) => { const available = choices(item); const product = products.find((entry) => entry.variants.some((variant) => variant.id === item.product_variant_id)); const variant = product?.variants.find((entry) => entry.id === item.product_variant_id); const maxFlavors = product?.type === "wings" ? Math.min(variant?.max_flavors ?? 1, settings.max_wing_flavors) : variant?.max_flavors ?? 1; return <View style={styles.component} key={item.id}><Text style={styles.label}>{Number(item.quantity)} × {item.variant.product.name} · {item.variant.name}</Text>{!!available.availableFlavors.length && <View style={styles.actions}>{available.availableFlavors.map((flavor) => <Pressable key={flavor.id} style={[styles.choice, (flavors[item.id] ?? []).includes(flavor.id) && styles.choiceActive]} onPress={() => setFlavors((current) => { const selected = current[item.id] ?? []; const next = selected.includes(flavor.id) ? selected.filter((id) => id !== flavor.id) : maxFlavors <= 1 ? [flavor.id] : [...selected, flavor.id].slice(-maxFlavors); return { ...current, [item.id]: next }; })}><Text>{flavor.name}</Text></Pressable>)}</View>}{!!available.availableModifiers.length && <View style={styles.actions}>{available.availableModifiers.map((modifier) => <Pressable key={modifier.id} style={[styles.choice, (modifiers[item.id] ?? []).includes(modifier.id) && styles.choiceActive]} onPress={() => setModifiers((current) => ({ ...current, [item.id]: (current[item.id] ?? []).includes(modifier.id) ? current[item.id].filter((id) => id !== modifier.id) : [...(current[item.id] ?? []), modifier.id] }))}><Text>{modifier.name}</Text></Pressable>)}</View>}<TextInput style={styles.input} value={notes[item.id] ?? ""} onChangeText={(value) => setNotes((current) => ({ ...current, [item.id]: value }))} placeholder="Notas del componente" /></View>; })}<Pressable disabled={incomplete} style={[styles.primary, incomplete && styles.disabled]} onPress={add}><Text style={styles.primaryText}>Agregar paquete</Text></Pressable></View>;
+}
+
+function DocumentActions({ token, order }: { token: string; order: Order }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [paperWidth, setPaperWidth] = useState<ThermalPaperWidth>(80);
+  const [printer, setPrinter] = useState<SavedPrinter | null>(null);
+  async function open(type: "customer_html" | "customer_pdf" | "customer_image") { setBusy(true); setError(""); try { const doc = await api<{ download_url?: string; whatsapp_url?: string }>(`/orders/${order.id}/generate-document`, token, { method: "POST", body: JSON.stringify({ type }) }); if (!doc.download_url) throw new Error("El servidor no devolvió un documento para abrir."); await Linking.openURL(doc.download_url); } catch (reason) { setError((reason as Error).message || "No fue posible generar el documento."); } finally { setBusy(false); } }
+  async function print() { setBusy(true); setError(""); try { const doc = await api<{ download_url?: string }>(`/orders/${order.id}/generate-document`, token, { method: "POST", body: JSON.stringify({ type: "customer_html" }) }); if (!doc.download_url) throw new Error("El servidor no devolvió un ticket para imprimir."); await printThermalTicket(doc.download_url, paperWidth, printer?.url); } catch (reason) { setError((reason as Error).message || "No fue posible imprimir el ticket."); } finally { setBusy(false); } }
+  async function choosePrinter() { setError(""); try { setPrinter(await selectThermalPrinter()); } catch (reason) { setError((reason as Error).message || "No fue posible seleccionar la impresora."); } }
+  return <View style={styles.warning}><Text style={styles.rowTitle}>Ticket de orden #{order.daily_number}</Text><Text style={styles.muted}>Selecciona el ancho configurado en tu impresora térmica.</Text><View style={styles.actions}>{([58, 80] as ThermalPaperWidth[]).map((width) => <Pressable key={width} style={[styles.choice, paperWidth === width && styles.choiceActive]} onPress={() => setPaperWidth(width)}><Text>{width} mm</Text></Pressable>)}</View>{Platform.OS === "ios" && <Pressable disabled={busy} style={styles.outlineButton} onPress={choosePrinter}><Text style={styles.outlineText}>{printer ? `Impresora: ${printer.name}` : "Elegir impresora"}</Text></Pressable>}{!!error && <Text style={styles.notice}>{error}</Text>}<View style={styles.actions}><Pressable disabled={busy} style={styles.primary} onPress={print}><Text style={styles.primaryText}>{busy ? "Preparando..." : "Imprimir ticket"}</Text></Pressable><Pressable disabled={busy} style={styles.outlineButton} onPress={() => open("customer_html")}><Text style={styles.outlineText}>Vista previa</Text></Pressable><Pressable disabled={busy} style={styles.outlineButton} onPress={() => open("customer_pdf")}><Text style={styles.outlineText}>PDF</Text></Pressable><Pressable disabled={busy} style={styles.outlineButton} onPress={() => open("customer_image")}><Text style={styles.outlineText}>Imagen</Text></Pressable></View></View>;
+}
+
+const styles = StyleSheet.create({
+  layout: { alignItems: "flex-start", flexDirection: "row", gap: 16 }, layoutCompact: { flexDirection: "column" }, catalog: { flex: 2, gap: 12, width: "100%" }, cart: { backgroundColor: "white", borderColor: "#e7e9ec", borderRadius: 18, borderWidth: 1, flex: 1, gap: 12, minWidth: 350, padding: 18, width: "100%" }, cartCompact: { minWidth: 0 }, card: { backgroundColor: "white", borderColor: "#e7e9ec", borderRadius: 18, borderWidth: 1, gap: 10, marginBottom: 12, padding: 16 }, loader: { margin: 40 }, title: { color: "#20242a", fontSize: 19, fontWeight: "900" }, rowTitle: { color: "#20242a", fontWeight: "800" }, label: { color: "#30353c", fontWeight: "700" }, muted: { color: "#747b85" }, price: { color: "#d94f36", fontWeight: "900" }, total: { color: "#20242a", fontSize: 22, fontWeight: "900" }, inline: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 8 }, flex: { flex: 1, minWidth: 150 }, actions: { flexDirection: "row", flexWrap: "wrap", gap: 7 }, headingRow: { alignItems: "center", flexDirection: "row", justifyContent: "space-between", gap: 8 }, input: { backgroundColor: "white", borderColor: "#d9dde2", borderRadius: 11, borderWidth: 1, minHeight: 48, paddingHorizontal: 12 }, choice: { backgroundColor: "#f0f2f4", borderRadius: 9, padding: 10 }, choiceActive: { backgroundColor: "#ffe4de" }, primary: { alignItems: "center", backgroundColor: "#d94f36", borderRadius: 11, justifyContent: "center", minHeight: 48, padding: 11 }, primaryText: { color: "white", fontWeight: "800" }, outlineButton: { borderColor: "#d94f36", borderRadius: 10, borderWidth: 1, minHeight: 44, padding: 10 }, outlineText: { color: "#d94f36", fontWeight: "800" }, disabled: { opacity: 0.45 }, variant: { borderTopColor: "#e7e9ec", borderTopWidth: 1, gap: 9, paddingTop: 10 }, combo: { borderTopColor: "#e7e9ec", borderTopWidth: 1, gap: 10, paddingVertical: 12 }, component: { backgroundColor: "#f6f7f9", borderRadius: 11, gap: 8, padding: 10 }, section: { gap: 9 }, cartLine: { alignItems: "center", borderBottomColor: "#e7e9ec", borderBottomWidth: 1, flexDirection: "row", gap: 8, justifyContent: "space-between", paddingVertical: 10 }, quantity: { backgroundColor: "#f0f2f4", borderRadius: 9, minWidth: 38, padding: 10 }, notice: { backgroundColor: "#fff4dc", borderRadius: 10, color: "#644b16", padding: 11 }, warning: { backgroundColor: "#fff4dc", borderRadius: 11, gap: 8, padding: 12 },
+});
