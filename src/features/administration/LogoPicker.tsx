@@ -7,11 +7,10 @@ type LogoPickerProps = {
   onError: (message: string) => void;
   emptyLabel?: string;
   changeLabel?: string;
+  maximumBytes?: number;
 };
 
-const maximumBytes = 1024 * 1024;
-
-export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar imagen", changeLabel = "Cambiar imagen" }: LogoPickerProps) {
+export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar imagen", changeLabel = "Cambiar imagen", maximumBytes = 5 * 1024 * 1024 }: LogoPickerProps) {
   async function pick() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -25,7 +24,7 @@ export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar
       const asset = result.assets[0];
       if (!asset?.base64) throw new Error("No fue posible leer la imagen seleccionada.");
       const decodedBytes = Math.ceil(asset.base64.length * 3 / 4);
-      if (decodedBytes > maximumBytes) throw new Error("La imagen resultante supera el máximo permitido de 1 MB. Recórtala o reduce su resolución.");
+      if (decodedBytes > maximumBytes) throw new Error(`La imagen resultante supera el máximo permitido de ${maximumBytes / 1024 / 1024} MB. Recórtala o reduce su resolución.`);
       onError("");
       onChange(`data:image/jpeg;base64,${asset.base64}`);
     } catch (error) {
@@ -36,7 +35,7 @@ export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar
   return <Pressable accessibilityRole="button" onPress={pick} style={styles.dropZone}>
     {value ? <Image resizeMode="contain" source={{ uri: value }} style={styles.preview} /> : <View style={styles.placeholder}><Text style={styles.icon}>▧</Text></View>}
     <Text style={styles.title}>{value ? changeLabel : emptyLabel}</Text>
-    <Text style={styles.help}>PNG o JPEG · máximo 1 MB</Text>
+    <Text style={styles.help}>PNG o JPEG · máximo {maximumBytes / 1024 / 1024} MB</Text>
   </Pressable>;
 }
 

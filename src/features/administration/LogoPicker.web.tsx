@@ -6,12 +6,12 @@ type LogoPickerProps = {
   onError: (message: string) => void;
   emptyLabel?: string;
   changeLabel?: string;
+  maximumBytes?: number;
 };
 
-const maximumBytes = 1024 * 1024;
 const allowedTypes = ["image/png", "image/jpeg"];
 
-export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar o arrastrar imagen", changeLabel = "Cambiar imagen" }: LogoPickerProps) {
+export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar o arrastrar imagen", changeLabel = "Cambiar imagen", maximumBytes = 5 * 1024 * 1024 }: LogoPickerProps) {
   const [dragging, setDragging] = useState(false);
 
   function read(file?: File) {
@@ -21,7 +21,7 @@ export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar
       return;
     }
     if (file.size > maximumBytes) {
-      onError("La imagen supera el máximo permitido de 1 MB.");
+      onError(`La imagen supera el máximo permitido de ${maximumBytes / 1024 / 1024} MB.`);
       return;
     }
     const reader = new FileReader();
@@ -71,6 +71,6 @@ export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar
     />
     {value ? <img alt="Vista previa de la imagen" src={value} style={{ maxHeight: 105, maxWidth: "80%", objectFit: "contain" }} /> : <span style={{ fontSize: 30 }}>▧</span>}
     <strong>{value ? changeLabel : emptyLabel}</strong>
-    <span style={{ color: "#747b85", fontSize: 13 }}>PNG o JPEG · máximo 1 MB</span>
+    <span style={{ color: "#747b85", fontSize: 13 }}>PNG o JPEG · máximo {maximumBytes / 1024 / 1024} MB</span>
   </div>;
 }

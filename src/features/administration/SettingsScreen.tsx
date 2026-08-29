@@ -63,7 +63,7 @@ export function SettingsScreen({ token }: { token: string }) {
       <Pressable style={styles.outlineButton} onPress={() => setProfile({ ...profile, social_links: [...(profile.social_links ?? []), { name: "", value: "" }] })}><Text style={styles.outlineText}>Agregar red social</Text></Pressable>
       <Text style={styles.subtitle}>Logo</Text>
       <Text style={styles.muted}>{profile.logo_path ? "Hay un logo guardado. Puedes reemplazarlo seleccionando otra imagen." : "Selecciona el logo que aparecerá en notas, tickets y documentos."}</Text>
-      <LogoPicker value={logoBase64} onChange={(value) => { setLogoBase64(value); setRemoveLogo(false); }} onError={setMessage} />
+      <LogoPicker value={logoBase64} onChange={(value) => { setLogoBase64(value); setRemoveLogo(false); }} onError={setMessage} maximumBytes={1024 * 1024} />
       {!!logoBase64 && <Pressable style={styles.dangerButton} onPress={() => setLogoBase64("")}><Text style={styles.dangerText}>Descartar imagen seleccionada</Text></Pressable>}
       {profile.logo_path && <Pressable style={[styles.choice, removeLogo && styles.choiceActive]} onPress={() => setRemoveLogo(!removeLogo)}><Text>{removeLogo ? "El logo se eliminará al guardar" : "Conservar logo actual"}</Text></Pressable>}
       <Pressable disabled={busy || !profile.name.trim()} style={[styles.primary, busy && styles.disabled]} onPress={saveProfile}><Text style={styles.primaryText}>Guardar datos del negocio</Text></Pressable>
