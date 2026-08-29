@@ -26,6 +26,7 @@
   "devDependencies": {
     "@capacitor/cli": "^8.5.0",
     "@types/react": "~19.2.2",
+    "serve": "^14.2.6",
     "typescript": "~6.0.3"
   },
   "scripts": {
@@ -35,6 +36,7 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "build:web": "expo export --platform web",
+    "start:production": "serve -s dist -l tcp://0.0.0.0:$PORT",
     "cap:sync": "npm run build:web && cap sync android",
     "cap:apk": "npm run cap:sync && cd android && ./gradlew assembleDebug"
   },
