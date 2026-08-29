@@ -1,4 +1,5 @@
 import { StatusBar } from "expo-status-bar";
+import { App as CapacitorApp } from "@capacitor/app";
 import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -152,6 +153,9 @@ function PizzeriaApp() {
   const [restoringSession, setRestoringSession] = useState(true);
   const [screen, setScreen] = useState<Screen>("dashboard");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const screenHistory = useRef<Screen[]>([]);
+  const screenRef = useRef<Screen>(screen);
+  const mobileMenuOpenRef = useRef(false);
   const { width } = useWindowDimensions();
   const compact = width < 780;
   useEffect(() => {
@@ -172,16 +176,44 @@ function PizzeriaApp() {
     setUnauthorizedHandler(() => { clearSession().catch(() => {}); setSession(null); });
     return () => setUnauthorizedHandler(null);
   }, []);
+  useEffect(() => {
+    screenRef.current = screen;
+  }, [screen]);
+  useEffect(() => {
+    mobileMenuOpenRef.current = mobileMenuOpen;
+  }, [mobileMenuOpen]);
+  useEffect(() => {
+    const listener = CapacitorApp.addListener("backButton", () => {
+      if (mobileMenuOpenRef.current) {
+        mobileMenuOpenRef.current = false;
+        setMobileMenuOpen(false);
+        return;
+      }
+      const previousScreen = screenHistory.current.pop();
+      if (previousScreen) {
+        screenRef.current = previousScreen;
+        setScreen(previousScreen);
+        return;
+      }
+      void CapacitorApp.minimizeApp();
+    });
+    return () => { void listener.then((handle) => handle.remove()); };
+  }, []);
   useEffect(()=>{if(session)registerPush(session.token).catch(()=>{})},[session?.token]);
   if (restoringSession) return <SafeAreaView style={s.loginPage}><ActivityIndicator size="large" color="#cf4b32" /><Text style={s.muted}>Restaurando sesión...</Text></SafeAreaView>;
-  if (!session) return <Login onLogin={(next, remember)=>{const screens=screensForUser(next.user);setSession(next);setScreen(screens[0] ?? "dashboard");if(remember)saveSession(next).catch(()=>{});else clearSession().catch(()=>{})}} />;
+  if (!session) return <Login onLogin={(next, remember)=>{const screens=screensForUser(next.user);const firstScreen=screens[0] ?? "dashboard";screenHistory.current=[];screenRef.current=firstScreen;setSession(next);setScreen(firstScreen);if(remember)saveSession(next).catch(()=>{});else clearSession().catch(()=>{})}} />;
   const visibleScreens = screensForUser(session.user);
   const currentScreen = visibleScreens.includes(screen) ? screen : visibleScreens[0];
   const isAdministrator = hasPermission(session.user, "*");
   const mobilePriority: Screen[] = ["dashboard", "pos", "orders", "kitchen", "delivery", "cash"];
   const quickScreens = mobilePriority.filter((item) => visibleScreens.includes(item)).slice(0, 4);
-  const changeScreen = (next: Screen) => { setScreen(next); setMobileMenuOpen(false); };
-  const logout = async () => { try { await api("/logout", session.token, { method: "POST" }); } finally { await clearSession(); setSession(null); } };
+  const changeScreen = (next: Screen) => {
+    if (next !== screenRef.current) screenHistory.current.push(screenRef.current);
+    screenRef.current = next;
+    setScreen(next);
+    setMobileMenuOpen(false);
+  };
+  const logout = async () => { try { await api("/logout", session.token, { method: "POST" }); } finally { screenHistory.current=[];await clearSession();setSession(null); } };
   return (
     <SafeAreaView style={s.page}>
       <View style={[s.layout, compact && s.layoutCompact]}>
@@ -307,6 +339,10 @@ function Login({ onLogin }: { onLogin: (s: Session, remember: boolean) => void }
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
+          autoComplete="username"
+          textContentType="username"
+          importantForAutofill="yes"
+          returnKeyType="next"
         />
         <Text style={s.label}>Contraseña</Text>
         <TextInput
@@ -314,6 +350,11 @@ function Login({ onLogin }: { onLogin: (s: Session, remember: boolean) => void }
           value={password}
           onChangeText={setPassword}
           secureTextEntry
+          autoComplete="current-password"
+          textContentType="password"
+          importantForAutofill="yes"
+          returnKeyType="done"
+          onSubmitEditing={go}
         />
         <Pressable onPress={() => setRemember((value) => !value)} style={[s.type, remember && s.typeActive]}>
           <Text>{remember ? "✓ Recordar sesión" : "Recordar sesión"}</Text>

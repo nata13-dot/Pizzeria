@@ -1,4 +1,4 @@
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "http://127.0.0.1:8000/api";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://pizzeria-api-production-2bf0.up.railway.app/api";
 let unauthorizedHandler: (() => void) | null = null;
 
 export type ApiStockWarning = {
