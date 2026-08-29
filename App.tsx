@@ -5,6 +5,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   Linking,
   Modal,
   Platform,
@@ -22,6 +23,7 @@ import { CashScreen } from "./src/features/administration/CashScreen";
 import { CustomersScreen } from "./src/features/administration/CustomersScreen";
 import { UsersScreen } from "./src/features/administration/UsersScreen";
 import { SettingsScreen } from "./src/features/administration/SettingsScreen";
+import { LogoPicker } from "./src/features/administration/LogoPicker";
 import { PosScreen } from "./src/features/pos/PosScreen";
 import { InventoryScreen } from "./src/features/operations/InventoryScreen";
 import { ProductionScreen } from "./src/features/operations/ProductionScreen";
@@ -39,6 +41,8 @@ const allScreens: Screen[] = ["dashboard", "pos", "cash", "orders", "inventory",
 type Product = {
   id: number;
   name: string;
+  description?: string | null;
+  image_data_uri?: string | null;
   flavors: { id: number; name: string }[];
   variants: { id: number; name: string; price: string; max_flavors: number }[];
 };
@@ -1153,17 +1157,19 @@ function Reports({ token }: { token: string }) {
   );
 }
 function ProductsView({ data, token, onSaved, canConfigure }: { data: any[]; token: string; onSaved: () => void; canConfigure: boolean }) {
-  const [ingredients, setIngredients] = useState<any[]>([]); const [name, setName] = useState(""); const [type, setType] = useState("pizza"); const [variantName, setVariantName] = useState(""); const [price, setPrice] = useState(""); const [maxFlavors, setMaxFlavors] = useState("1"); const [half, setHalf] = useState(false); const [flavorNames, setFlavorNames] = useState("");
+  const [ingredients, setIngredients] = useState<any[]>([]); const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [productImage, setProductImage] = useState(""); const [type, setType] = useState("pizza"); const [variantName, setVariantName] = useState(""); const [price, setPrice] = useState(""); const [maxFlavors, setMaxFlavors] = useState("1"); const [half, setHalf] = useState(false); const [flavorNames, setFlavorNames] = useState("");
   const variants = data.flatMap((product) => (product.variants ?? []).map((variant: any) => ({ ...variant, product })));
-  const [recipeVariantId, setRecipeVariantId] = useState<number | null>(null); const selectedVariant = variants.find((variant) => variant.id === recipeVariantId); const [recipeFlavorId, setRecipeFlavorId] = useState<number | null>(null); const [recipeName, setRecipeName] = useState(""); const [recipeIngredientId, setRecipeIngredientId] = useState<number | null>(null); const [recipeQuantity, setRecipeQuantity] = useState(""); const [component, setComponent] = useState("base"); const [recipeItems, setRecipeItems] = useState<{ingredient_id:number;name:string;quantity:number;component:string}[]>([]); const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false);
+  const [recipeVariantId, setRecipeVariantId] = useState<number | null>(null); const selectedVariant = variants.find((variant) => variant.id === recipeVariantId); const [recipeFlavorId, setRecipeFlavorId] = useState<number | null>(null); const [recipeName, setRecipeName] = useState(""); const [recipeIngredientId, setRecipeIngredientId] = useState<number | null>(null); const [recipeQuantity, setRecipeQuantity] = useState(""); const [component, setComponent] = useState("base"); const [recipeItems, setRecipeItems] = useState<{ingredient_id:number;name:string;quantity:number;component:string}[]>([]); const [editingProductId, setEditingProductId] = useState<number | null>(null); const [editDescription, setEditDescription] = useState(""); const [editImage, setEditImage] = useState(""); const [message, setMessage] = useState(""); const [busy, setBusy] = useState(false);
   useEffect(() => { api<any>("/ingredients?per_page=100", token).then((response) => { const next = response.data ?? response; setIngredients(next); setRecipeIngredientId(next[0]?.id ?? null); }).catch((error) => setMessage((error as Error).message)); }, [token]);
   useEffect(() => { if (!recipeVariantId && variants[0]) setRecipeVariantId(variants[0].id); }, [data]);
-  async function saveProduct() { setBusy(true); setMessage(""); try { await api("/products", token, { method:"POST", body:JSON.stringify({ name:name.trim(), type, variants:[{name:variantName.trim(),price:Number(price),max_flavors:Number(maxFlavors),allows_half_and_half:half}], flavors:flavorNames.split(",").map((flavor)=>flavor.trim()).filter(Boolean).map((flavor)=>({name:flavor})) }) }); setName("");setVariantName("");setPrice("");setFlavorNames("");setMessage("Producto y variante registrados.");await onSaved(); } catch(error){setMessage((error as Error).message);}finally{setBusy(false);} }
+  async function saveProduct() { setBusy(true); setMessage(""); try { await api("/products", token, { method:"POST", body:JSON.stringify({ name:name.trim(), description:description.trim() || null, image_data_uri:productImage || null, type, variants:[{name:variantName.trim(),price:Number(price),max_flavors:Number(maxFlavors),allows_half_and_half:half}], flavors:flavorNames.split(",").map((flavor)=>flavor.trim()).filter(Boolean).map((flavor)=>({name:flavor})) }) }); setName("");setDescription("");setProductImage("");setVariantName("");setPrice("");setFlavorNames("");setMessage("Producto y variante registrados.");await onSaved(); } catch(error){setMessage((error as Error).message);}finally{setBusy(false);} }
+  function editProduct(product:any){setEditingProductId(product.id);setEditDescription(product.description ?? "");setEditImage(product.image_data_uri ?? "");setMessage("");}
+  async function saveProductPresentation(){if(!editingProductId)return;setBusy(true);setMessage("");try{await api(`/products/${editingProductId}`,token,{method:"PATCH",body:JSON.stringify({description:editDescription.trim() || null,image_data_uri:editImage || null})});setEditingProductId(null);setMessage("Imagen y descripción actualizadas.");await onSaved();}catch(error){setMessage((error as Error).message);}finally{setBusy(false);}}
   function addRecipeItem(){const ingredient=ingredients.find((item)=>item.id===recipeIngredientId);const parsed=Number(recipeQuantity);if(!ingredient||parsed<=0)return;setRecipeItems((current)=>[...current.filter((item)=>!(item.ingredient_id===ingredient.id&&item.component===component)),{ingredient_id:ingredient.id,name:ingredient.name,quantity:parsed,component}]);setRecipeQuantity("");}
   async function saveRecipe(){if(!recipeVariantId||!recipeItems.length)return;setBusy(true);setMessage("");try{await api("/recipes",token,{method:"POST",body:JSON.stringify({product_variant_id:recipeVariantId,product_flavor_id:recipeFlavorId,name:recipeName.trim(),items:recipeItems.map(({name:_name,...item})=>item)})});setRecipeName("");setRecipeItems([]);setMessage("Receta de venta registrada.");await onSaved();}catch(error){setMessage((error as Error).message);}finally{setBusy(false);}}
   return (
     <View>
-      {canConfigure&&<View style={s.formCard}><Text style={s.sectionTitle}>Crear producto y variante</Text><TextInput style={s.input} placeholder="Nombre del producto" value={name} onChangeText={setName}/><View style={s.types}>{[["pizza","Pizza"],["wings","Alitas"],["fries","Papas"],["nuggets","Nuggets"],["cone","Cono"],["beverage","Bebida"],["extra","Extra"],["other","Otro"]].map(([key,label])=><Pressable key={key} onPress={()=>setType(key)} style={[s.type,type===key&&s.typeActive]}><Text>{label}</Text></Pressable>)}</View><View style={s.inlineFields}><TextInput style={[s.input,s.flexField]} placeholder="Variante/tamaño" value={variantName} onChangeText={setVariantName}/><TextInput style={[s.input,s.flexField]} placeholder="Precio" value={price} onChangeText={setPrice} keyboardType="decimal-pad"/><TextInput style={[s.input,s.flexField]} placeholder="Máx. sabores" value={maxFlavors} onChangeText={setMaxFlavors} keyboardType="number-pad"/></View><TextInput style={s.input} placeholder="Sabores separados por coma" value={flavorNames} onChangeText={setFlavorNames}/>{type==="pizza"&&<Pressable onPress={()=>setHalf((value)=>!value)} style={[s.type,half&&s.typeActive]}><Text>{half?"Mitad y mitad habilitada":"Habilitar mitad y mitad"}</Text></Pressable>}<Pressable disabled={busy||!name.trim()||!variantName.trim()||!price} style={[s.primary,(busy||!name.trim()||!variantName.trim()||!price)&&s.disabled]} onPress={saveProduct}><Text style={s.primaryText}>Guardar producto</Text></Pressable></View>}
+      {canConfigure&&<View style={s.formCard}><Text style={s.sectionTitle}>Crear producto y variante</Text><TextInput style={s.input} placeholder="Nombre del producto" value={name} onChangeText={setName}/><TextInput style={[s.input,s.multilineInput]} multiline maxLength={500} placeholder="Descripción corta para mostrar en Caja" value={description} onChangeText={setDescription}/><LogoPicker value={productImage} onChange={setProductImage} onError={setMessage} emptyLabel="Seleccionar o arrastrar foto del producto" changeLabel="Cambiar foto del producto" />{!!productImage&&<Pressable onPress={()=>setProductImage("")} style={s.secondaryButton}><Text style={s.secondaryText}>Quitar imagen</Text></Pressable>}<View style={s.types}>{[["pizza","Pizza"],["wings","Alitas"],["fries","Papas"],["nuggets","Nuggets"],["cone","Cono"],["beverage","Bebida"],["extra","Extra"],["other","Otro"]].map(([key,label])=><Pressable key={key} onPress={()=>setType(key)} style={[s.type,type===key&&s.typeActive]}><Text>{label}</Text></Pressable>)}</View><View style={s.inlineFields}><TextInput style={[s.input,s.flexField]} placeholder="Variante/tamaño" value={variantName} onChangeText={setVariantName}/><TextInput style={[s.input,s.flexField]} placeholder="Precio" value={price} onChangeText={setPrice} keyboardType="decimal-pad"/><TextInput style={[s.input,s.flexField]} placeholder="Máx. sabores" value={maxFlavors} onChangeText={setMaxFlavors} keyboardType="number-pad"/></View><TextInput style={s.input} placeholder="Sabores separados por coma" value={flavorNames} onChangeText={setFlavorNames}/>{type==="pizza"&&<Pressable onPress={()=>setHalf((value)=>!value)} style={[s.type,half&&s.typeActive]}><Text>{half?"Mitad y mitad habilitada":"Habilitar mitad y mitad"}</Text></Pressable>}<Pressable disabled={busy||!name.trim()||!variantName.trim()||!price} style={[s.primary,(busy||!name.trim()||!variantName.trim()||!price)&&s.disabled]} onPress={saveProduct}><Text style={s.primaryText}>Guardar producto</Text></Pressable></View>}
       {canConfigure&&<View style={s.formCard}><Text style={s.sectionTitle}>Crear receta de venta</Text><Text style={s.label}>Variante</Text><View style={s.types}>{variants.map((variant)=><Pressable key={variant.id} onPress={()=>{setRecipeVariantId(variant.id);setRecipeFlavorId(null);}} style={[s.type,recipeVariantId===variant.id&&s.typeActive]}><Text>{variant.product.name} · {variant.name}</Text></Pressable>)}</View>{!!selectedVariant?.product.flavors?.length&&<><Text style={s.label}>Sabor</Text><View style={s.types}>{selectedVariant.product.flavors.map((flavor:any)=><Pressable key={flavor.id} onPress={()=>setRecipeFlavorId(flavor.id)} style={[s.type,recipeFlavorId===flavor.id&&s.typeActive]}><Text>{flavor.name}</Text></Pressable>)}</View></>}<TextInput style={s.input} placeholder="Nombre de la receta" value={recipeName} onChangeText={setRecipeName}/><Text style={s.label}>Insumo y componente</Text><View style={s.types}>{ingredients.map((ingredient)=><Pressable key={ingredient.id} onPress={()=>setRecipeIngredientId(ingredient.id)} style={[s.type,recipeIngredientId===ingredient.id&&s.typeActive]}><Text>{ingredient.name}</Text></Pressable>)}</View><View style={s.types}>{["base","topping","sauce","packaging","other"].map((key)=><Pressable key={key} onPress={()=>setComponent(key)} style={[s.type,component===key&&s.typeActive]}><Text>{key}</Text></Pressable>)}</View><View style={s.inlineFields}><TextInput style={[s.input,s.flexField]} placeholder="Cantidad en unidad base" value={recipeQuantity} onChangeText={setRecipeQuantity} keyboardType="decimal-pad"/><Pressable style={s.secondaryButton} onPress={addRecipeItem}><Text style={s.secondaryText}>Agregar</Text></Pressable></View>{recipeItems.map((item)=><View style={s.cartRow} key={`${item.ingredient_id}-${item.component}`}><Text>{item.name}: {item.quantity} ({item.component})</Text><Pressable onPress={()=>setRecipeItems((current)=>current.filter((row)=>row!==item))}><Text style={s.remove}>Quitar</Text></Pressable></View>)}<Pressable disabled={busy||!recipeVariantId||!recipeName.trim()||!recipeItems.length} style={[s.primary,(busy||!recipeVariantId||!recipeName.trim()||!recipeItems.length)&&s.disabled]} onPress={saveRecipe}><Text style={s.primaryText}>Guardar receta</Text></Pressable></View>}
       {!!message&&<Text style={s.notice}>{message}</Text>}
       <FlatList
@@ -1171,9 +1177,13 @@ function ProductsView({ data, token, onSaved, canConfigure }: { data: any[]; tok
       keyExtractor={(item) => String(item.id)}
       renderItem={({ item }) => (
         <View style={s.row}>
+          {item.image_data_uri?<Image source={{uri:item.image_data_uri}} resizeMode="cover" style={s.catalogImage}/>:<View style={s.catalogImagePlaceholder}><Text>🍕</Text></View>}
           <View style={s.rowText}>
             <Text style={s.productName}>{item.name}</Text>
             <Text style={s.muted}>{item.category?.name ?? "Sin categoría"} · {item.type}</Text>
+            <Text numberOfLines={2} style={s.muted}>{item.description || "Sin descripción corta"}</Text>
+            {canConfigure&&<Pressable onPress={()=>editProduct(item)}><Text style={s.editLink}>Editar imagen y descripción</Text></Pressable>}
+            {editingProductId===item.id&&<View style={s.inlineEditor}><TextInput style={[s.input,s.multilineInput]} multiline maxLength={500} placeholder="Descripción corta" value={editDescription} onChangeText={setEditDescription}/><LogoPicker value={editImage} onChange={setEditImage} onError={setMessage} emptyLabel="Seleccionar o arrastrar foto" changeLabel="Cambiar foto" /><View style={s.reportActions}><Pressable disabled={busy} onPress={saveProductPresentation} style={s.smallButton}><Text style={s.primaryText}>Guardar cambios</Text></Pressable>{!!editImage&&<Pressable disabled={busy} onPress={()=>setEditImage("")} style={s.secondaryButton}><Text style={s.secondaryText}>Quitar imagen</Text></Pressable>}<Pressable disabled={busy} onPress={()=>setEditingProductId(null)} style={s.secondaryButton}><Text style={s.secondaryText}>Cancelar</Text></Pressable></View></View>}
           </View>
           <Text style={s.stock}>{item.variants?.length ?? 0}</Text>
         </View>
@@ -1759,6 +1769,7 @@ const s = StyleSheet.create({
     marginBottom: 15,
     backgroundColor: "white",
   },
+  multilineInput: { height: 88, paddingTop: 13, textAlignVertical: "top" },
   primary: {
     height: 52,
     backgroundColor: "#cf4b32",
@@ -1823,6 +1834,10 @@ const s = StyleSheet.create({
     gap: 12,
   },
   rowText: { flex: 1, minWidth: 0 },
+  catalogImage: { backgroundColor: "#f2f3f5", borderRadius: 12, height: 76, width: 76 },
+  catalogImagePlaceholder: { alignItems: "center", backgroundColor: "#fff1ec", borderRadius: 12, height: 76, justifyContent: "center", width: 76 },
+  editLink: { color: "#cf4b32", fontWeight: "800", marginTop: 8 },
+  inlineEditor: { gap: 10, marginTop: 14, width: "100%" },
   stock: { fontSize: 22, fontWeight: "900", color: "#cf4b32" },
   order: {
     backgroundColor: "#fffdfa",

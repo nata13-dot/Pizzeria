@@ -5,11 +5,13 @@ type LogoPickerProps = {
   value: string;
   onChange: (dataUri: string) => void;
   onError: (message: string) => void;
+  emptyLabel?: string;
+  changeLabel?: string;
 };
 
 const maximumBytes = 1024 * 1024;
 
-export function LogoPicker({ value, onChange, onError }: LogoPickerProps) {
+export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar imagen", changeLabel = "Cambiar imagen" }: LogoPickerProps) {
   async function pick() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -33,7 +35,7 @@ export function LogoPicker({ value, onChange, onError }: LogoPickerProps) {
 
   return <Pressable accessibilityRole="button" onPress={pick} style={styles.dropZone}>
     {value ? <Image resizeMode="contain" source={{ uri: value }} style={styles.preview} /> : <View style={styles.placeholder}><Text style={styles.icon}>▧</Text></View>}
-    <Text style={styles.title}>{value ? "Cambiar imagen" : "Seleccionar imagen"}</Text>
+    <Text style={styles.title}>{value ? changeLabel : emptyLabel}</Text>
     <Text style={styles.help}>PNG o JPEG · máximo 1 MB</Text>
   </Pressable>;
 }
