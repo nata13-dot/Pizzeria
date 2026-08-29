@@ -85,6 +85,7 @@ type Order = {
   daily_number: number;
   status: OrderStatus;
   type: OrderType;
+  sales_channel?: "local" | "whatsapp" | "phone" | "other";
   total: string;
   amount_paid?: string | number;
   amount_due?: string | number;
@@ -507,6 +508,7 @@ const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   dine_in: "Consumo en local",
   delivery: "Domicilio",
 };
+const SALES_CHANNEL_LABELS: Record<string, string> = { local: "Local", whatsapp: "WhatsApp", phone: "Teléfono", other: "Otro" };
 const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   draft: "Borrador",
   pending_payment: "Pendiente de pago",
@@ -911,6 +913,7 @@ function OrderContents({ order }: { order: Order }) {
   return <View style={s.orderContents}>
     <Text style={s.orderNo}>Orden #{order.daily_number}</Text>
     <Text style={s.orderMeta}>Tipo: {ORDER_TYPE_LABELS[order.type]}</Text>
+    {!!order.sales_channel && <Text style={s.orderMeta}>Canal: {SALES_CHANNEL_LABELS[order.sales_channel] ?? order.sales_channel}</Text>}
     {order.scheduled_at
       ? <Text style={s.scheduled}>Programada: {new Date(order.scheduled_at).toLocaleString()}</Text>
       : <Text style={s.muted}>Horario: inmediato</Text>}
@@ -950,11 +953,11 @@ function KitchenBoard({ orders, token, onAction }: { orders: Order[]; token: str
       {columnOrders.map((order) => {
         const working = workingOrderIds.includes(order.id);
         return <View style={s.order} key={order.id}>
-        <OrderContents order={order} />
-        <KitchenElapsedTime order={order} />
-        <Pressable disabled={working} style={[s.smallButton, working && s.disabled]} onPress={() => advance(order)}>
+        <Pressable disabled={working} style={[s.smallButton, compact && s.kitchenActionCompact, working && s.disabled]} onPress={() => advance(order)}>
           {working ? <ActivityIndicator color="white" /> : <Text style={s.primaryText}>{status === "kitchen_pending" ? "Iniciar" : status === "preparing" ? "Marcar preparada" : order.type === "delivery" ? "Lista para reparto" : "Lista para recoger"}</Text>}
         </Pressable>
+        <OrderContents order={order} />
+        <KitchenElapsedTime order={order} />
         <DocumentButton order={order} token={token} kind="kitchen" />
       </View>})}
       {!columnOrders.length && <Text style={s.empty}>Sin pedidos</Text>}
@@ -1895,6 +1898,7 @@ const s = StyleSheet.create({
     borderRadius: 10,
     alignSelf: "flex-start",
   },
+  kitchenActionCompact: { alignItems: "center", alignSelf: "stretch", justifyContent: "center", minHeight: 50 },
   empty: { color: "#796b61", padding: 30, textAlign: "center" },
   groupEmpty: { color: "#796b61", paddingVertical: 12 },
   posLayout: {
