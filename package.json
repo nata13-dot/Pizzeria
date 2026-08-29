@@ -24,6 +24,7 @@
     "react-native-web": "^0.21.2"
   },
   "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.5.0",
     "@types/react": "~19.2.2",
     "serve": "^14.2.6",
@@ -38,7 +39,8 @@
     "build:web": "expo export --platform web",
     "start:production": "serve -s dist -l tcp://0.0.0.0:$PORT",
     "cap:sync": "npm run build:web && cap sync android",
-    "cap:apk": "npm run cap:sync && cd android && ./gradlew assembleDebug"
+    "cap:assets": "capacitor-assets generate --android --assetPath capacitor-assets --iconBackgroundColor '#050505' --iconBackgroundColorDark '#050505'",
+    "cap:apk": "npm run cap:sync && npm run cap:assets && cd android && ./gradlew assembleDebug"
   },
   "private": true
 }
