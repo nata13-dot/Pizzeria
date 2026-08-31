@@ -502,6 +502,11 @@ function confirmOperation(message: string): Promise<boolean> {
     { text: "Aceptar", onPress: () => resolve(true) },
   ], { cancelable: true, onDismiss: () => resolve(false) }));
 }
+async function openPhoneDialer(phone?: string | null): Promise<void> {
+  const normalized = (phone ?? "").trim().replace(/[^\d+]/g, "");
+  if (!normalized) return;
+  await Linking.openURL(`tel:${normalized}`);
+}
 const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   pickup: "Recoger",
   whatsapp: "WhatsApp",
@@ -820,6 +825,7 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
     const scheduledIsDue = Number.isFinite(scheduledAt) && scheduledAt <= Date.now();
     const canSend = order.status === "confirmed" && (!order.scheduled_at || scheduledIsDue || Boolean(sendFailure?.warnings.length));
     const canDeliver = order.status === "ready" && order.type !== "delivery";
+    const contactPhone = order.delivery?.phone || order.customer?.phone;
     const advancedCancellation = ["preparing", "prepared", "ready", "on_way"].includes(order.status);
     const canCancel = !["delivered", "cancelled"].includes(order.status) && (!advancedCancellation || isAdministrator);
     return <View style={s.order} key={order.id}>
@@ -846,6 +852,7 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
       />}
       {advancedCancellation && !isAdministrator && <Text style={s.muted}>Solo un administrador puede cancelar este pedido porque la preparación ya inició.</Text>}
       <View style={s.reportActions}>
+        {!!contactPhone && <Pressable style={s.secondaryButton} onPress={() => openPhoneDialer(contactPhone)}><Text style={s.secondaryText}>☎ Llamar {contactPhone}</Text></Pressable>}
         {canConfirm && <Pressable disabled={working} style={[s.smallButton, working && s.disabled]} onPress={() => confirmOrder(order)}><Text style={s.primaryText}>{order.courtesy ? "Confirmar cortesía" : order.collect_on_delivery ? "Confirmar contra entrega" : "Confirmar y cobrar efectivo"}</Text></Pressable>}
         {canSend && (!sendFailure?.warnings.length || isAdministrator) && <Pressable disabled={working} style={[s.smallButton, working && s.disabled]} onPress={() => sendToKitchen(order)}><Text style={s.primaryText}>{sendFailure?.warnings.length ? "Autorizar faltante y enviar" : sendFailure ? "Reintentar envío a cocina" : "Enviar a cocina"}</Text></Pressable>}
         {canDeliver && <Pressable disabled={working} style={[s.smallButton, working && s.disabled]} onPress={() => markDelivered(order)}><Text style={s.primaryText}>Marcar entregado</Text></Pressable>}
@@ -1046,7 +1053,7 @@ function DeliveryBoard({ orders, token, onAction, onReload }: { orders: Order[];
         : <Text style={s.paid}>✓ Sin saldo por cobrar</Text>}
       <Text style={s.muted}>Pago: {paymentLabel}</Text>
       <View style={s.reportActions}>
-        {delivery?.phone && <Pressable style={s.secondaryButton} onPress={() => Linking.openURL(`tel:${delivery.phone}`)}><Text style={s.secondaryText}>Llamar</Text></Pressable>}
+        {delivery?.phone && <Pressable style={s.secondaryButton} onPress={() => openPhoneDialer(delivery.phone)}><Text style={s.secondaryText}>☎ Llamar</Text></Pressable>}
         {delivery?.phone && <Pressable style={s.secondaryButton} onPress={() => Linking.openURL(`https://wa.me/${delivery.phone.replace(/\D/g, "")}`)}><Text style={s.secondaryText}>WhatsApp</Text></Pressable>}
         {mapUrl && <Pressable style={s.secondaryButton} onPress={() => Linking.openURL(mapUrl)}><Text style={s.secondaryText}>Mapa</Text></Pressable>}
       </View>

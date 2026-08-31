@@ -1,8 +1,11 @@
 import * as Print from "expo-print";
+import { Capacitor, registerPlugin } from "@capacitor/core";
 import { Linking, Platform } from "react-native";
 
 export type ThermalPaperWidth = 58 | 80;
 export type SavedPrinter = { name: string; url: string };
+type DevicePrintPlugin = { printHtml(options: { html: string; jobName: string }): Promise<{ opened: boolean }> };
+const DevicePrint = registerPlugin<DevicePrintPlugin>("DevicePrint");
 
 function thermalHtml(html: string, paperWidth: ThermalPaperWidth): string {
   const printStyles = `<style id="thermal-ticket-styles">
@@ -32,6 +35,10 @@ export async function printThermalHtml(
   paperWidth: ThermalPaperWidth,
   printerUrl?: string,
 ): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    await DevicePrint.printHtml({ html: thermalHtml(html, paperWidth), jobName: `Ticket ${paperWidth} mm` });
+    return;
+  }
   if (Platform.OS === "web") {
     const popup = window.open("", "_blank", "width=420,height=720");
     if (!popup) throw new Error("El navegador bloqueó la ventana de impresión. Permite ventanas emergentes e inténtalo nuevamente.");
@@ -53,7 +60,7 @@ export async function printThermalTicket(
   paperWidth: ThermalPaperWidth,
   printerUrl?: string,
 ): Promise<void> {
-  if (Platform.OS === "web") {
+  if (Platform.OS === "web" && !Capacitor.isNativePlatform()) {
     await Linking.openURL(downloadUrl);
     return;
   }

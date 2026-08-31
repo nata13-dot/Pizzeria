@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { api } from "../../api";
 
 type Address = { id: number; label: string; address: string; references?: string | null; map_url?: string | null; delivery_zone?: string | null; notes?: string | null; is_default: boolean };
@@ -9,6 +9,11 @@ type OrderRow = { id: number; daily_number: number; order_date: string; status: 
 type LoyaltyTransaction = { id: number; type: string; points: string | number; comment?: string | null; expires_at?: string | null; created_at: string };
 type CustomerDetail = Customer & { orders?: OrderRow[]; loyalty_transactions?: LoyaltyTransaction[]; points_balance: number };
 type LoyaltyRule = { id: number; name: string; type: string; threshold: string | number; points: string | number; expires_days?: number | null; courtesy_eligible: boolean; active: boolean };
+
+async function callPhone(phone: string): Promise<void> {
+  const normalized = phone.trim().replace(/[^\d+]/g, "");
+  if (normalized) await Linking.openURL(`tel:${normalized}`);
+}
 
 function confirmAction(message: string): Promise<boolean> {
   if (Platform.OS === "web") return Promise.resolve(globalThis.confirm(message));
@@ -167,7 +172,7 @@ function CustomerEditor({ customer, token, isAdministrator, onSaved, setMessage 
 
   return <>
     <View style={styles.card}>
-      <View style={styles.headingRow}><View><Text style={styles.title}>{customer.name}</Text><Text style={styles.points}>{Number(customer.points_balance ?? 0)} puntos disponibles</Text></View><Pressable style={styles.dangerButton} onPress={toggleCustomer}><Text style={styles.dangerText}>{customer.active ? "Desactivar" : "Reactivar"}</Text></Pressable></View>
+      <View style={styles.headingRow}><View><Text style={styles.title}>{customer.name}</Text><Text style={styles.points}>{Number(customer.points_balance ?? 0)} puntos disponibles</Text></View><View style={styles.actions}><Pressable style={styles.outlineButton} onPress={() => callPhone(customer.phone)}><Text style={styles.outlineText}>☎ Llamar</Text></Pressable><Pressable style={styles.dangerButton} onPress={toggleCustomer}><Text style={styles.dangerText}>{customer.active ? "Desactivar" : "Reactivar"}</Text></Pressable></View></View>
       <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Nombre" />
       <View style={styles.inline}><TextInput style={[styles.input, styles.flex]} value={phone} onChangeText={setPhone} placeholder="Teléfono" /><TextInput style={[styles.input, styles.flex]} value={email} onChangeText={setEmail} placeholder="Correo" autoCapitalize="none" /></View>
       <TextInput style={styles.input} value={birthDate} onChangeText={setBirthDate} placeholder="Cumpleaños AAAA-MM-DD" />
