@@ -32,6 +32,7 @@ import { ordersChannel } from "./src/realtime";
 import { registerPush } from "./src/push";
 import { printThermalHtml, type ThermalPaperWidth } from "./src/printing";
 import { clearSession, readSession, saveSession } from "./src/session";
+import { SystemTheme } from "./src/SystemTheme";
 type Session = {
   token: string;
   user: { id: number; name: string; branch_id: number; permissions: string[]; role: { name: string; slug: string } };
@@ -151,7 +152,7 @@ function screensForUser(user: Session["user"]): Screen[] {
   return screens;
 }
 export default function App() {
-  return <AppErrorBoundary><PizzeriaApp /></AppErrorBoundary>;
+  return <><SystemTheme /><AppErrorBoundary><PizzeriaApp /></AppErrorBoundary></>;
 }
 function PizzeriaApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -288,7 +289,7 @@ function PizzeriaApp() {
       </View>
       {compact && <View style={s.bottomNav}>{quickScreens.map((item) => <Pressable key={item} onPress={() => changeScreen(item)} style={s.bottomNavItem}><View style={[s.bottomIconWrap, currentScreen === item && s.bottomIconActive]}><Text style={[s.bottomIcon, currentScreen === item && s.bottomTextActive]}>{screenIcons[item]}</Text></View><Text numberOfLines={1} style={[s.bottomLabel, currentScreen === item && s.bottomTextActive]}>{labels[item].replace(" del día", "")}</Text></Pressable>)}<Pressable onPress={() => setMobileMenuOpen(true)} style={s.bottomNavItem}><View style={[s.bottomIconWrap, !quickScreens.includes(currentScreen) && s.bottomIconActive]}><Text style={[s.bottomIcon, !quickScreens.includes(currentScreen) && s.bottomTextActive]}>•••</Text></View><Text style={[s.bottomLabel, !quickScreens.includes(currentScreen) && s.bottomTextActive]}>Más</Text></Pressable></View>}
       <Modal animationType="slide" transparent visible={compact && mobileMenuOpen} onRequestClose={() => setMobileMenuOpen(false)}><Pressable style={s.modalBackdrop} onPress={() => setMobileMenuOpen(false)}><Pressable style={s.menuSheet} onPress={(event) => event.stopPropagation()}><View style={s.sheetHandle} /><View style={s.sheetHeading}><View><Text style={s.sheetTitle}>Todos los módulos</Text><Text style={s.muted}>{session.user.name} · {session.user.role.name}</Text></View><Pressable onPress={() => setMobileMenuOpen(false)} style={s.closeButton}><Text style={s.closeButtonText}>×</Text></Pressable></View><ScrollView contentContainerStyle={s.moduleGrid}>{visibleScreens.map((item) => <Pressable key={item} onPress={() => changeScreen(item)} style={[s.moduleCard, currentScreen === item && s.moduleCardActive]}><Text style={[s.moduleIcon, currentScreen === item && s.navActiveText]}>{screenIcons[item]}</Text><Text style={[s.moduleLabel, currentScreen === item && s.navActiveText]}>{labels[item]}</Text></Pressable>)}</ScrollView><Pressable onPress={logout} style={s.sheetLogout}><Text style={s.sheetLogoutText}>Cerrar sesión</Text></Pressable></Pressable></Pressable></Modal>
-      <StatusBar style="dark" />
+      <StatusBar style="auto" />
     </SafeAreaView>
   );
 }
@@ -309,17 +310,35 @@ function Login({ onLogin }: { onLogin: (s: Session, remember: boolean) => void }
     [remember, setRemember] = useState(true),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    let form = document.getElementById("pizzeria-login-form") as HTMLFormElement | null;
+    if (!form) {
+      form = document.createElement("form");
+      form.id = "pizzeria-login-form";
+      form.autocomplete = "on";
+      form.style.display = "none";
+      form.addEventListener("submit", (event) => event.preventDefault());
+      document.body.appendChild(form);
+    }
+    const username = document.getElementById("login-username") as HTMLInputElement | null;
+    const passwordField = document.getElementById("login-password") as HTMLInputElement | null;
+    if (username) { username.name = "username"; username.autocomplete = "username"; username.setAttribute("form", form.id); }
+    if (passwordField) { passwordField.name = "password"; passwordField.autocomplete = "current-password"; passwordField.setAttribute("form", form.id); }
+    return () => form?.remove();
+  }, []);
   async function go() {
     setBusy(true);
     setError("");
     try {
-      onLogin(
-        await api<Session>("/login", undefined, {
+      const authenticated = await api<Session>("/login", undefined, {
           method: "POST",
           body: JSON.stringify({ login: email, password, device_name: Platform.OS }),
-        }),
-        remember,
-      );
+        });
+      if (Platform.OS === "web" && typeof document !== "undefined") {
+        document.getElementById("pizzeria-login-form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      }
+      onLogin(authenticated, remember);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -340,6 +359,9 @@ function Login({ onLogin }: { onLogin: (s: Session, remember: boolean) => void }
         <Text style={s.title}>Inicia sesión</Text>
         <Text style={s.label}>Correo o usuario</Text>
         <TextInput
+          nativeID="login-username"
+          accessibilityLabel="Correo o usuario"
+          placeholder="Correo o usuario"
           style={s.input}
           value={email}
           onChangeText={setEmail}
@@ -351,6 +373,9 @@ function Login({ onLogin }: { onLogin: (s: Session, remember: boolean) => void }
         />
         <Text style={s.label}>Contraseña</Text>
         <TextInput
+          nativeID="login-password"
+          accessibilityLabel="Contraseña"
+          placeholder="Contraseña"
           style={s.input}
           value={password}
           onChangeText={setPassword}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { api } from "../../api";
+import { getConfiguredThermalPrinter, isNativeAndroid, saveThermalPaperWidth, selectThermalPrinter, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
 import { LogoPicker } from "./LogoPicker";
 
 type SocialLink = { name: string; value: string };
@@ -16,6 +17,9 @@ export function SettingsScreen({ token }: { token: string }) {
   const [removeLogo, setRemoveLogo] = useState(false);
   const [busy, setBusy] = useState(true);
   const [message, setMessage] = useState("");
+  const [printer, setPrinter] = useState<SavedPrinter | null>(null);
+  const [printerBusy, setPrinterBusy] = useState(false);
+  const [printerMessage, setPrinterMessage] = useState("");
 
   const load = useCallback(async () => {
     setBusy(true); setMessage("");
@@ -28,6 +32,20 @@ export function SettingsScreen({ token }: { token: string }) {
     } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
   }, [token]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { getConfiguredThermalPrinter().then(setPrinter).catch(() => undefined); }, []);
+
+  async function configurePrinter() {
+    setPrinterBusy(true); setPrinterMessage("");
+    try { const selected = await selectThermalPrinter(); setPrinter(selected); if (selected) setPrinterMessage(`Impresora ${selected.name} guardada.`); }
+    catch (error) { setPrinterMessage((error as Error).message); }
+    finally { setPrinterBusy(false); }
+  }
+  async function changePaperWidth(width: ThermalPaperWidth) {
+    setPrinterBusy(true); setPrinterMessage("");
+    try { const updated = await saveThermalPaperWidth(width); setPrinter(updated ?? (printer ? { ...printer, paperWidth: width } : null)); setPrinterMessage(`Ancho de papel guardado: ${width} mm.`); }
+    catch (error) { setPrinterMessage((error as Error).message); }
+    finally { setPrinterBusy(false); }
+  }
 
   async function saveProfile() {
     if (!profile) return; setBusy(true); setMessage("");
@@ -50,6 +68,17 @@ export function SettingsScreen({ token }: { token: string }) {
 
   return <View style={styles.container}>
     {!!message && <Text style={styles.notice}>{message}</Text>}
+    <View style={styles.card}>
+      <Text style={styles.title}>Impresora térmica</Text>
+      <Text style={styles.muted}>Configura una sola vez la impresora que utilizará la impresión directa de tickets.</Text>
+      {isNativeAndroid() ? <>
+        <View style={styles.printerStatus}><Text style={styles.subtitle}>{printer?.name ?? "Sin impresora configurada"}</Text><Text style={styles.muted}>{printer ? `${printer.type === "tcp" ? "Wi-Fi / TCP" : "Bluetooth"}${printer.address ? ` · ${printer.address}` : ""}` : "Vincula una impresora Bluetooth en Android o registra su dirección IP."}</Text></View>
+        <Text style={styles.label}>Ancho del papel</Text>
+        <View style={styles.inline}>{([58, 80] as ThermalPaperWidth[]).map((width) => <Pressable disabled={printerBusy || !printer} key={width} style={[styles.choice, (printer?.paperWidth ?? 80) === width && styles.choiceActive, !printer && styles.disabled]} onPress={() => changePaperWidth(width)}><Text>{width} mm</Text></Pressable>)}</View>
+        <Pressable disabled={printerBusy} style={[styles.primary, printerBusy && styles.disabled]} onPress={configurePrinter}><Text style={styles.primaryText}>{printerBusy ? "Abriendo configuración..." : printer ? "Cambiar impresora" : "Configurar impresora"}</Text></Pressable>
+      </> : <Text style={styles.notice}>La configuración directa está disponible dentro de la aplicación Android. En navegador se utiliza el diálogo de impresión del sistema.</Text>}
+      {!!printerMessage && <Text style={styles.notice}>{printerMessage}</Text>}
+    </View>
     <View style={styles.card}>
       <Text style={styles.title}>Datos del negocio y formato de nota</Text>
       <TextInput style={styles.input} value={profile.name} onChangeText={(name) => setProfile({ ...profile, name })} placeholder="Nombre comercial" />
@@ -100,5 +129,5 @@ function NumberField({ label, value, onChange }: { label: string; value: number;
 }
 
 const styles = StyleSheet.create({
-  container: { gap: 14 }, card: { backgroundColor: "#fffdfa", borderRadius: 16, gap: 12, padding: 18 }, loader: { margin: 40 }, title: { color: "#29231f", fontSize: 18, fontWeight: "900" }, subtitle: { color: "#29231f", fontWeight: "900", marginTop: 6 }, muted: { color: "#796b61" }, label: { color: "#29231f", fontWeight: "700" }, notice: { backgroundColor: "#fff1cc", borderRadius: 10, color: "#5f4918", padding: 12 }, input: { backgroundColor: "white", borderColor: "#ddd1c5", borderRadius: 11, borderWidth: 1, minHeight: 50, paddingHorizontal: 14 }, multiline: { minHeight: 90, paddingVertical: 12, textAlignVertical: "top" }, inline: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 10 }, flex: { flex: 1, minWidth: 160 }, numberField: { flex: 1, gap: 6, minWidth: 190 }, fixedLabel: { fontWeight: "800", minWidth: 110 }, choice: { backgroundColor: "#eee4da", borderRadius: 9, padding: 11 }, choiceActive: { backgroundColor: "#f3b19f" }, primary: { alignItems: "center", backgroundColor: "#cf4b32", borderRadius: 11, justifyContent: "center", minHeight: 50, padding: 12 }, primaryText: { color: "white", fontWeight: "800" }, outlineButton: { alignSelf: "flex-start", borderColor: "#cf4b32", borderRadius: 10, borderWidth: 1, padding: 11 }, outlineText: { color: "#cf4b32", fontWeight: "800" }, dangerButton: { borderColor: "#a82e20", borderRadius: 10, borderWidth: 1, padding: 10 }, dangerText: { color: "#a82e20", fontWeight: "800" }, disabled: { opacity: 0.45 }, zoneCard: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 13, borderWidth: 1, gap: 10, padding: 12 },
+  container: { gap: 14 }, card: { backgroundColor: "#fffdfa", borderRadius: 16, gap: 12, padding: 18 }, loader: { margin: 40 }, title: { color: "#29231f", fontSize: 18, fontWeight: "900" }, subtitle: { color: "#29231f", fontWeight: "900", marginTop: 6 }, muted: { color: "#796b61" }, label: { color: "#29231f", fontWeight: "700" }, notice: { backgroundColor: "#fff1cc", borderRadius: 10, color: "#5f4918", padding: 12 }, input: { backgroundColor: "white", borderColor: "#ddd1c5", borderRadius: 11, borderWidth: 1, minHeight: 50, paddingHorizontal: 14 }, multiline: { minHeight: 90, paddingVertical: 12, textAlignVertical: "top" }, inline: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 10 }, flex: { flex: 1, minWidth: 160 }, numberField: { flex: 1, gap: 6, minWidth: 190 }, fixedLabel: { fontWeight: "800", minWidth: 110 }, choice: { backgroundColor: "#eee4da", borderRadius: 9, padding: 11 }, choiceActive: { backgroundColor: "#f3b19f" }, primary: { alignItems: "center", backgroundColor: "#cf4b32", borderRadius: 11, justifyContent: "center", minHeight: 50, padding: 12 }, primaryText: { color: "white", fontWeight: "800" }, outlineButton: { alignSelf: "flex-start", borderColor: "#cf4b32", borderRadius: 10, borderWidth: 1, padding: 11 }, outlineText: { color: "#cf4b32", fontWeight: "800" }, dangerButton: { borderColor: "#a82e20", borderRadius: 10, borderWidth: 1, padding: 10 }, dangerText: { color: "#a82e20", fontWeight: "800" }, disabled: { opacity: 0.45 }, zoneCard: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 13, borderWidth: 1, gap: 10, padding: 12 }, printerStatus: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 12, borderWidth: 1, gap: 3, padding: 13 },
 });
