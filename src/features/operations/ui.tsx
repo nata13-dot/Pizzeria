@@ -120,9 +120,12 @@ export function Tabs({
   </View>;
 }
 
-export function Section({ title, children }: { title: string; children: ReactNode }) {
+export function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
   return <View style={ops.section}>
-    <Text style={ops.sectionTitle}>{title}</Text>
+    <View style={ops.sectionHeader}>
+      <Text style={ops.sectionTitle}>{title}</Text>
+      {!!subtitle && <Text style={ops.sectionDescription}>{subtitle}</Text>}
+    </View>
     {children}
   </View>;
 }
@@ -146,7 +149,7 @@ export function Feedback({ error, message }: { error?: string; message?: string 
 }
 
 export const ops = StyleSheet.create({
-  screen: { gap: 16 },
+  screen: { gap: 18 },
   toolbar: {
     alignItems: "center",
     flexDirection: "row",
@@ -154,37 +157,39 @@ export const ops = StyleSheet.create({
     gap: 10,
     justifyContent: "space-between",
   },
-  tabs: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  tab: { backgroundColor: "#eceff2", borderRadius: 10, paddingHorizontal: 13, paddingVertical: 10 },
+  tabs: { backgroundColor: "#f4f6f8", borderRadius: 14, flexDirection: "row", flexWrap: "wrap", gap: 6, padding: 5 },
+  tab: { alignItems: "center", backgroundColor: "#eceff2", borderRadius: 10, justifyContent: "center", minHeight: 44, paddingHorizontal: 14, paddingVertical: 10 },
   tabActive: { backgroundColor: "#d94f36" },
   tabText: { color: "#515861", fontWeight: "700" },
   tabTextActive: { color: "white" },
-  section: { backgroundColor: "white", borderColor: "#e7e9ec", borderRadius: 18, borderWidth: 1, gap: 12, padding: 18 },
-  sectionTitle: { color: "#20242a", fontSize: 19, fontWeight: "900" },
+  section: { backgroundColor: "white", borderColor: "#e7e9ec", borderRadius: 20, borderWidth: 1, gap: 14, padding: 20 },
+  sectionHeader: { borderBottomColor: "#e7e9ec", borderBottomWidth: 1, gap: 4, marginBottom: 2, paddingBottom: 12 },
+  sectionTitle: { color: "#20242a", fontSize: 20, fontWeight: "900" },
+  sectionDescription: { color: "#747b85", lineHeight: 19 },
   subtitle: { color: "#20242a", fontSize: 16, fontWeight: "800" },
-  card: { backgroundColor: "white", borderColor: "#e7e9ec", borderRadius: 14, borderWidth: 1, gap: 7, marginBottom: 9, padding: 15 },
-  insetCard: { backgroundColor: "#f4f6f8", borderRadius: 11, gap: 5, padding: 11 },
+  card: { backgroundColor: "white", borderColor: "#e7e9ec", borderRadius: 16, borderWidth: 1, gap: 9, marginBottom: 10, padding: 16 },
+  insetCard: { backgroundColor: "#f4f6f8", borderColor: "#e7e9ec", borderRadius: 12, borderWidth: 1, gap: 7, padding: 13 },
   row: { alignItems: "flex-start", flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "space-between" },
   rowGrow: { flex: 1, minWidth: 180 },
   inline: { alignItems: "flex-start", flexDirection: "row", gap: 10 },
   inlineCompact: { alignItems: "stretch", flexDirection: "column", width: "100%" },
   fieldGrow: { flex: 1, minWidth: 0 },
-  label: { color: "#30353c", fontWeight: "800", marginTop: 2 },
+  label: { color: "#30353c", fontSize: 13, fontWeight: "800", marginTop: 2 },
   muted: { color: "#747b85" },
   strong: { color: "#20242a", fontSize: 16, fontWeight: "900" },
   value: { color: "#d94f36", fontSize: 20, fontWeight: "900" },
   input: {
     backgroundColor: "white",
     borderColor: "#d9dde2",
-    borderRadius: 11,
+    borderRadius: 12,
     borderWidth: 1,
-    minHeight: 48,
-    paddingHorizontal: 13,
+    minHeight: 50,
+    paddingHorizontal: 14,
     paddingVertical: 10,
   },
   textArea: { minHeight: 76, textAlignVertical: "top" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  chip: { backgroundColor: "#eef0f3", borderRadius: 9, paddingHorizontal: 11, paddingVertical: 9 },
+  chip: { alignItems: "center", backgroundColor: "#eef0f3", borderRadius: 10, justifyContent: "center", minHeight: 42, paddingHorizontal: 12, paddingVertical: 9 },
   chipActive: { backgroundColor: "#ffe4de" },
   chipDisabled: { opacity: 0.45 },
   button: { alignItems: "center", backgroundColor: "#d94f36", borderRadius: 11, justifyContent: "center", minHeight: 47, paddingHorizontal: 14, paddingVertical: 10 },
@@ -206,6 +211,6 @@ export const ops = StyleSheet.create({
   empty: { color: "#796b61", padding: 24, textAlign: "center" },
   divider: { backgroundColor: "#e7e9ec", height: 1, marginVertical: 3 },
   metrics: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
-  metric: { backgroundColor: "#f4f6f8", borderRadius: 11, flexGrow: 1, minWidth: 130, padding: 12 },
+  metric: { backgroundColor: "white", borderColor: "#e7e9ec", borderRadius: 14, borderWidth: 1, flexGrow: 1, gap: 3, minWidth: 130, padding: 14 },
   metricValue: { color: "#d94f36", fontSize: 22, fontWeight: "900" },
 });

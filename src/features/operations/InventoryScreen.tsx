@@ -498,7 +498,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
       })}
     </>}
 
-    {tab === "batches" && <Section title="Lotes por caducidad (FEFO)">
+    {tab === "batches" && <Section title="Lotes por caducidad (FEFO)" subtitle="Los lotes con vencimiento más próximo aparecen primero para facilitar su rotación.">
       {!batches.length ? <EmptyState text="No hay lotes registrados." /> : batches.map((batch) => {
         const knownIngredient = ingredientById.get(batch.ingredient_id) ?? batch.ingredient;
         const expired = batchIsExpired(batch);
@@ -520,7 +520,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
       </Pressable>}
     </Section>}
 
-    {tab === "alerts" && <Section title="Alertas activas">
+    {tab === "alerts" && <Section title="Alertas activas" subtitle="Prioriza faltantes, niveles críticos y lotes próximos a caducar.">
       {!alerts.length ? <EmptyState text="No hay alertas activas de stock o caducidad." /> : alerts.map((alert) => <View style={ops.insetCard} key={alert.id}>
         <View style={ops.row}>
           <Text style={alert.severity === "critical" ? ops.statusDanger : ops.statusWarning}>{alert.severity.toUpperCase()} · {alert.type}</Text>
@@ -531,7 +531,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
       </View>)}
     </Section>}
 
-    {tab === "movements" && <Section title="Historial de movimientos">
+    {tab === "movements" && <Section title="Historial de movimientos" subtitle="Consulta entradas, salidas y ajustes con su saldo antes y después.">
       {!movements.length ? <EmptyState text="No hay movimientos de inventario." /> : movements.map((movement) => <View style={ops.insetCard} key={movement.id}>
         <View style={ops.row}>
           <View style={ops.rowGrow}>
@@ -549,7 +549,8 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
     </Section>}
 
     {tab === "admin" && isAdministrator && <>
-      <Section title={editingIngredientId ? "Editar insumo" : "Registrar insumo"}>
+      <Section title={editingIngredientId ? "Editar insumo" : "Registrar insumo"} subtitle="Configura su unidad de control, niveles de alerta y, si aplica, la existencia inicial.">
+        <Text style={ops.subtitle}>Identificación</Text>
         <View style={[ops.inline, compact && ops.inlineCompact]}>
           <TextInput style={[ops.input, ops.fieldGrow]} value={ingredientName} onChangeText={setIngredientName} placeholder="Nombre del insumo" />
           <TextInput style={[ops.input, ops.fieldGrow]} value={ingredientSku} onChangeText={setIngredientSku} placeholder="SKU opcional" autoCapitalize="characters" />
@@ -558,6 +559,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
         {editingIngredientId && <Text style={ops.notice}>La unidad base se conserva para no alterar movimientos, recetas ni conversiones existentes.</Text>}
         <Text style={ops.label}>Tipo de insumo</Text>
         <View style={ops.chips}><Pressable onPress={() => setIngredientTypeId(null)} style={[ops.chip, ingredientTypeId === null && ops.chipActive]}><Text>Sin tipo</Text></Pressable>{activeTypes.map((type) => <Pressable key={type.id} onPress={() => setIngredientTypeId(type.id)} style={[ops.chip, ingredientTypeId === type.id && ops.chipActive]}><Text>{type.name}</Text></Pressable>)}</View>
+        <Text style={ops.subtitle}>Control de existencias</Text>
         <View style={[ops.inline, compact && ops.inlineCompact]}>
           <TextInput style={[ops.input, ops.fieldGrow]} value={minimumStock} onChangeText={setMinimumStock} placeholder="Stock mínimo" keyboardType="decimal-pad" />
           <TextInput style={[ops.input, ops.fieldGrow]} value={criticalStock} onChangeText={setCriticalStock} placeholder="Stock crítico" keyboardType="decimal-pad" />
@@ -566,7 +568,8 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
         </View>
         {editingIngredientId && <View style={ops.chips}><Pressable onPress={() => setIngredientActive((value) => !value)} style={[ops.chip, ingredientActive && ops.chipActive]}><Text>{ingredientActive ? "Activo" : "Inactivo"}</Text></Pressable></View>}
         {!editingIngredientId && <>
-          <Text style={ops.label}>Existencia inicial opcional</Text>
+          <Text style={ops.subtitle}>Existencia inicial opcional</Text>
+          <Text style={ops.muted}>Puedes dejarla vacía y registrar la primera compra posteriormente.</Text>
           <View style={[ops.inline, compact && ops.inlineCompact]}>
             <TextInput style={[ops.input, ops.fieldGrow]} value={initialStock} onChangeText={setInitialStock} placeholder="Cantidad" keyboardType="decimal-pad" />
             <TextInput style={[ops.input, ops.fieldGrow]} value={initialUnitCost} onChangeText={setInitialUnitCost} placeholder="Costo por unidad base" keyboardType="decimal-pad" />
@@ -582,7 +585,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
         </View>
       </Section>
 
-      <Section title={editingPresentationId ? "Editar presentación de compra" : "Nueva presentación de compra"}>
+      <Section title={editingPresentationId ? "Editar presentación de compra" : "Nueva presentación de compra"} subtitle="Relaciona la forma en que compras el insumo con su unidad base de inventario.">
         <Text style={ops.label}>Insumo</Text>
         <View style={ops.chips}>{activeIngredients.map((ingredient) => <Pressable disabled={editingPresentationId !== null} key={ingredient.id} onPress={() => setPresentationIngredientId(ingredient.id)} style={[ops.chip, presentationIngredientId === ingredient.id && ops.chipActive, editingPresentationId !== null && ops.chipDisabled]}><Text>{ingredient.name}</Text></Pressable>)}</View>
         <View style={[ops.inline, compact && ops.inlineCompact]}>
@@ -601,7 +604,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
         </View>
       </Section>
 
-      <Section title="Ajuste de inventario por lote">
+      <Section title="Ajuste de inventario por lote" subtitle="Usa esta opción para mermas, correcciones y movimientos que no provienen de una compra o venta.">
         <Text style={ops.label}>Lote</Text>
         <View style={ops.chips}>{batches.map((batch) => <Pressable key={batch.id} onPress={() => setAdjustmentBatchId(batch.id)} style={[ops.chip, adjustmentBatchId === batch.id && ops.chipActive]}><Text>{batch.ingredient?.name ?? "Insumo"} · {batch.lot_code || `#${batch.id}`} ({quantityText(batch.available_quantity)}){batchIsExpired(batch) ? " · CADUCADO" : ""}</Text></Pressable>)}</View>
         <Text style={ops.label}>Motivo</Text>
