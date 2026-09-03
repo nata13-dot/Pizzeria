@@ -32,7 +32,7 @@ import { ordersChannel } from "./src/realtime";
 import { registerPush } from "./src/push";
 import { printThermalHtml, type ThermalPaperWidth } from "./src/printing";
 import { clearSession, readSession, saveSession } from "./src/session";
-import { SystemTheme } from "./src/SystemTheme";
+import { SystemTheme, ThemeToggle } from "./src/SystemTheme";
 type Session = {
   token: string;
   user: { id: number; name: string; branch_id: number; permissions: string[]; role: { name: string; slug: string } };
@@ -243,12 +243,12 @@ function PizzeriaApp() {
             </Pressable>
           ))}
           </ScrollView>
-          <View style={s.userCard}><View style={s.avatar}><Text style={s.avatarText}>{session.user.name.slice(0, 1).toUpperCase()}</Text></View><View style={s.userInfo}><Text numberOfLines={1} style={s.userName}>{session.user.name}</Text><Text numberOfLines={1} style={s.userRole}>{session.user.role.name}</Text></View></View>
+          <View style={s.userCard}><View style={s.avatar}><Text style={s.avatarText}>{session.user.name.slice(0, 1).toUpperCase()}</Text></View><View style={s.userInfo}><Text numberOfLines={1} style={s.userName}>{session.user.name}</Text><Text numberOfLines={1} style={s.userRole}>{session.user.role.name}</Text></View><ThemeToggle /></View>
           <Pressable onPress={logout} style={s.logout}>
             <Text style={s.logoutText}>Cerrar sesión</Text>
           </Pressable>
         </View>}
-        {compact && <View style={s.mobileHeader}><View style={s.mobileBrand}><View style={s.mobileBrandMark}><Text>🍕</Text></View><View><Text style={s.mobileBrandName}>Pizzería</Text><Text style={s.mobileRole}>{session.user.role.name}</Text></View></View><Pressable accessibilityLabel="Abrir todos los módulos" onPress={() => setMobileMenuOpen(true)} style={s.mobileAvatar}><Text style={s.avatarText}>{session.user.name.slice(0, 1).toUpperCase()}</Text></Pressable></View>}
+        {compact && <View style={s.mobileHeader}><View style={s.mobileBrand}><View style={s.mobileBrandMark}><Text>🍕</Text></View><View><Text style={s.mobileBrandName}>Pizzería</Text><Text style={s.mobileRole}>{session.user.role.name}</Text></View></View><View style={s.headerActions}><ThemeToggle /><Pressable accessibilityLabel="Abrir todos los módulos" onPress={() => setMobileMenuOpen(true)} style={s.mobileAvatar}><Text style={s.avatarText}>{session.user.name.slice(0, 1).toUpperCase()}</Text></Pressable></View></View>}
         <ScrollView style={s.content} contentContainerStyle={[s.contentBody, compact && s.contentBodyCompact]}>
           <View style={s.pageHeading}><View><Text style={s.eyebrow}>{session.user.role.name.toUpperCase()}</Text>
           <Text style={[s.title, compact && s.titleCompact]}>{currentScreen ? labels[currentScreen] : "Sin módulos asignados"}</Text>
@@ -259,7 +259,7 @@ function PizzeriaApp() {
               <Text style={s.muted}>Solicita a un administrador que asigne los permisos necesarios a tu rol y vuelve a iniciar sesión.</Text>
             </View>
           ) : currentScreen === "dashboard" ? (
-            <Dashboard token={session.token} />
+            <Dashboard token={session.token} onNavigate={changeScreen} />
           ) : currentScreen === "pos" ? (
             <PosScreen token={session.token} isAdministrator={isAdministrator} canOverrideStock={hasPermission(session.user, "stock.override")} />
           ) : currentScreen === "orders" ? (
@@ -405,7 +405,7 @@ function Login({ onLogin }: { onLogin: (s: Session, remember: boolean) => void }
     </SafeAreaView>
   );
 }
-function Dashboard({token}:{token:string}) {
+function Dashboard({token,onNavigate}:{token:string;onNavigate:(screen:Screen)=>void}) {
   const { width } = useWindowDimensions();
   const compact = width < 780;
   type CashDashboard = { gross_sales?: number };
@@ -419,13 +419,14 @@ function Dashboard({token}:{token:string}) {
   if(!values)return <ActivityIndicator color="#cf4b32" style={{margin:40}}/>;
   return (
     <View style={[s.metrics, compact && s.metricsCompact]}>
-      {[{label:"Ventas de hoy",icon:"$",tone:"good"},{label:"Pedidos activos",icon:"≡",tone:"primary"},{label:"Stock bajo",icon:"!",tone:"warning"},{label:"Por caducar",icon:"⌛",tone:"danger"}].map(
+      {[{label:"Ventas de hoy",icon:"$",tone:"good",screen:"cash" as Screen},{label:"Pedidos activos",icon:"≡",tone:"primary",screen:"orders" as Screen},{label:"Stock bajo",icon:"!",tone:"warning",screen:"inventory" as Screen},{label:"Por caducar",icon:"⌛",tone:"danger",screen:"inventory" as Screen}].map(
         (item,i) => (
-          <View style={[s.metric, compact && s.metricCompact]} key={item.label}>
+          <Pressable accessibilityRole="button" accessibilityLabel={`Abrir ${item.label}`} onPress={() => onNavigate(item.screen)} style={({pressed}) => [s.metric, compact && s.metricCompact, pressed && s.metricPressed]} key={item.label}>
             <View style={[s.metricIcon, item.tone === "good" ? s.metricGood : item.tone === "warning" ? s.metricWarning : item.tone === "danger" ? s.metricDanger : s.metricPrimary]}><Text style={s.metricIconText}>{item.icon}</Text></View>
             <View><Text style={[s.number, compact && s.numberCompact]}>{i===0?'$':''}{values[i]}</Text>
             <Text style={s.metricLabel}>{item.label}</Text></View>
-          </View>
+            <Text style={s.metricLink}>Ver detalle →</Text>
+          </Pressable>
         ),
       )}
     </View>
@@ -1729,6 +1730,7 @@ const s = StyleSheet.create({
   },
   titleCompact: { fontSize: 26, letterSpacing: -0.5, marginBottom: 18 },
   mobileHeader: { alignItems: "center", backgroundColor: "white", borderBottomColor: "#e6e8eb", borderBottomWidth: 1, flexDirection: "row", justifyContent: "space-between", minHeight: 66, paddingHorizontal: 16, paddingVertical: 10 },
+  headerActions: { alignItems: "center", flexDirection: "row", gap: 9 },
   mobileBrand: { alignItems: "center", flexDirection: "row", gap: 10 },
   mobileBrandMark: { alignItems: "center", backgroundColor: "#fff0ec", borderRadius: 11, height: 40, justifyContent: "center", width: 40 },
   mobileBrandName: { color: "#20242a", fontSize: 17, fontWeight: "900" },
@@ -1828,6 +1830,8 @@ const s = StyleSheet.create({
     flexGrow: 1,
   },
   metricCompact: { flexBasis: "47%", gap: 11, minHeight: 138, minWidth: 0, padding: 14 },
+  metricPressed: { opacity: 0.78, transform: [{ scale: 0.985 }] },
+  metricLink: { color: "#d94f36", fontSize: 11, fontWeight: "800", marginTop: "auto" },
   metricIcon: { alignItems: "center", borderRadius: 11, height: 38, justifyContent: "center", width: 38 },
   metricPrimary: { backgroundColor: "#fff0ec" },
   metricGood: { backgroundColor: "#e7f6ed" },
