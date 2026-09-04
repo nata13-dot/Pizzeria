@@ -154,10 +154,9 @@ public class DevicePrintPlugin extends Plugin {
             .replaceAll("[ \\t]+", " ").replaceAll(" *\\n *", "\n").replaceAll("\\n{3,}", "\n\n").trim();
         int maxChars = paperWidth == 58 ? 32 : 48;
         String divider = new String(new char[maxChars]).replace('\0', '-');
-        text = text.replace("Nota de venta\n", divider + "\nNOTA DE VENTA\n")
-            .replace("Datos del cliente\n", divider + "\nDATOS DEL CLIENTE\n")
-            .replace("Detalle del pedido\n", divider + "\nDETALLE DEL PEDIDO\n")
-            .replace("Forma de pago\n", divider + "\nFORMA DE PAGO\n")
+        text = text.replace("Cliente\n", divider + "\nCLIENTE\n")
+            .replace("Pedido\n", divider + "\nPEDIDO\n")
+            .replace("Pago\n", divider + "\nPAGO\n")
             .replace("Productos y extras Importe", "PRODUCTOS / EXTRAS IMPORTE")
             .replaceAll("(?m)^Total ", "TOTAL ");
         StringBuilder wrapped = new StringBuilder();
