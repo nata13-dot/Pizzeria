@@ -151,8 +151,9 @@ public class DevicePrintPlugin extends Plugin {
         String prepared = html.replaceAll("(?is)<head.*?</head>", "").replaceAll("(?is)<script.*?</script>", "").replaceAll("(?is)<style.*?</style>", "")
             .replaceAll("(?is)<button.*?</button>", "").replaceAll("(?is)<img[^>]*>", "").replaceAll("(?i)<br\\s*/?>", "\n").replaceAll("(?i)</(p|div|h1|h2|h3|tr|table)>", "\n").replaceAll("(?i)</(td|th)>", "  ");
         String text = Html.fromHtml(prepared, Html.FROM_HTML_MODE_LEGACY).toString().replace('\u00a0', ' ')
-            .replaceAll("[ \\t]+", " ").replaceAll(" *\\n *", "\n").replaceAll("\\n{3,}", "\n\n").trim();
-        int maxChars = paperWidth == 58 ? 32 : 48;
+            .replace("🍕", "*").replace("🔥", "*")
+            .replaceAll("[ \\t]+", " ").replaceAll(" *\\n *", "\n").replaceAll("\\n{2,}", "\n").trim();
+        int maxChars = paperWidth == 58 ? 42 : 64;
         String divider = new String(new char[maxChars]).replace('\0', '-');
         text = text.replace("Cliente\n", divider + "\nCLIENTE\n")
             .replace("Pedido\n", divider + "\nPEDIDO\n")
@@ -161,13 +162,30 @@ public class DevicePrintPlugin extends Plugin {
             .replaceAll("(?m)^Total ", "TOTAL ");
         StringBuilder wrapped = new StringBuilder();
         for (String line : text.split("\\n")) {
-            String remaining = line.trim(); if (remaining.isEmpty()) { wrapped.append('\n'); continue; }
+            String remaining = alignAmount(line.trim(), maxChars); if (remaining.isEmpty()) continue;
+            if (remaining.equals("NOTA DE VENTA") || remaining.matches("#[0-9]+") || remaining.startsWith("¡GRACIAS")) remaining = centerLine(remaining, maxChars);
             while (remaining.length() > maxChars) { int split = remaining.lastIndexOf(' ', maxChars); if (split < 1) split = maxChars; wrapped.append(remaining, 0, split).append('\n'); remaining = remaining.substring(split).trim(); }
             wrapped.append(remaining).append('\n');
         }
         Charset charset = Charset.forName("CP850"); ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        bytes.write(new byte[] { 0x1B, 0x40 }); bytes.write(new byte[] { 0x1B, 0x74, 0x02 }); bytes.write(wrapped.toString().getBytes(charset));
-        bytes.write(new byte[] { 0x0A, 0x0A, 0x0A }); bytes.write(new byte[] { 0x1D, 0x56, 0x41, 0x10 }); return bytes.toByteArray();
+        bytes.write(new byte[] { 0x1B, 0x40 }); bytes.write(new byte[] { 0x1B, 0x4D, 0x01 }); bytes.write(new byte[] { 0x1B, 0x33, 0x12 });
+        bytes.write(new byte[] { 0x1B, 0x74, 0x02 }); bytes.write(wrapped.toString().getBytes(charset));
+        bytes.write(new byte[] { 0x0A, 0x0A }); bytes.write(new byte[] { 0x1D, 0x56, 0x41, 0x08 }); return bytes.toByteArray();
+    }
+
+    private String alignAmount(String line, int width) {
+        if (!line.matches(".*-?\\$[0-9][0-9,.]*$")) return line;
+        int amountStart = line.lastIndexOf('$');
+        if (amountStart > 0 && line.charAt(amountStart - 1) == '-') amountStart--;
+        String label = line.substring(0, amountStart).trim(); String amount = line.substring(amountStart).trim();
+        int spaces = width - label.length() - amount.length();
+        if (label.isEmpty() || spaces < 1) return line;
+        return label + new String(new char[spaces]).replace('\0', ' ') + amount;
+    }
+
+    private String centerLine(String line, int width) {
+        int spaces = Math.max(0, (width - line.length()) / 2);
+        return new String(new char[spaces]).replace('\0', ' ') + line;
     }
 
     private String readablePrintError(String type, Exception error) {

@@ -18,15 +18,17 @@ function thermalHtml(html: string, paperWidth: ThermalPaperWidth): string {
   const printStyles = `<style id="thermal-ticket-styles">
     @page { size: ${paperWidth}mm auto; margin: 0; }
     html, body { width: ${paperWidth}mm !important; max-width: ${paperWidth}mm !important; margin: 0 !important; }
-    body { color: #000 !important; font-family: Arial, sans-serif !important; font-size: ${paperWidth === 58 ? 10 : 12}px !important; padding: 1.5mm !important; }
-    h1 { font-size: ${paperWidth === 58 ? 17 : 20}px !important; }
-    h2 { font-size: ${paperWidth === 58 ? 14 : 16}px !important; }
-    h3 { font-size: ${paperWidth === 58 ? 12 : 14}px !important; }
+    body { color: #000 !important; font-family: Arial, sans-serif !important; font-size: ${paperWidth === 58 ? 8 : 9}px !important; line-height: 1.12 !important; padding: .7mm !important; }
+    body > .document { padding: 0 !important; }
+    h1 { font-size: ${paperWidth === 58 ? 13 : 15}px !important; }
+    h2 { font-size: ${paperWidth === 58 ? 11 : 13}px !important; }
+    h3 { font-size: ${paperWidth === 58 ? 9 : 10}px !important; }
     table { table-layout: fixed; width: 100% !important; }
-    th, td { overflow-wrap: anywhere; padding: 3px 1px !important; }
+    th, td { overflow-wrap: anywhere; padding: 2px 1px !important; }
     th:last-child, td:last-child { width: 25%; }
     .summary { width: 100% !important; }
-    .business img { max-height: 22mm !important; max-width: 80% !important; }
+    .business img { max-height: 9mm !important; max-width: 50% !important; }
+    .customer-ticket { font-size: ${paperWidth === 58 ? 8 : 9}px !important; line-height: 1.12 !important; }
     .print-button { display: none !important; }
   </style>`;
   return html.includes("</head>") ? html.replace("</head>", `${printStyles}</head>`) : `${printStyles}${html}`;
