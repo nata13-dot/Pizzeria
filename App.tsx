@@ -879,7 +879,7 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
       />}
       {advancedCancellation && !isAdministrator && <Text style={s.muted}>Solo un administrador puede cancelar este pedido porque la preparación ya inició.</Text>}
       <View style={s.reportActions}>
-        {!!contactPhone && <Pressable style={s.secondaryButton} onPress={() => openPhoneDialer(contactPhone)}><Text style={s.secondaryText}>☎ Llamar {contactPhone}</Text></Pressable>}
+        {order.type === "pickup" && !!contactPhone && <Pressable style={s.secondaryButton} onPress={() => openPhoneDialer(contactPhone)}><Text style={s.secondaryText}>☎ Llamar {contactPhone}</Text></Pressable>}
         {canConfirm && <Pressable disabled={working} style={[s.smallButton, working && s.disabled]} onPress={() => confirmOrder(order)}><Text style={s.primaryText}>{order.courtesy ? "Confirmar cortesía" : order.collect_on_delivery ? "Confirmar contra entrega" : "Confirmar y cobrar efectivo"}</Text></Pressable>}
         {canSend && (!sendFailure?.warnings.length || isAdministrator) && <Pressable disabled={working} style={[s.smallButton, working && s.disabled]} onPress={() => sendToKitchen(order)}><Text style={s.primaryText}>{sendFailure?.warnings.length ? "Autorizar faltante y enviar" : sendFailure ? "Reintentar envío a cocina" : "Enviar a cocina"}</Text></Pressable>}
         {canDeliver && <Pressable disabled={working} style={[s.smallButton, working && s.disabled]} onPress={() => markDelivered(order)}><Text style={s.primaryText}>Marcar entregado</Text></Pressable>}
