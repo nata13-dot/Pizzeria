@@ -10,8 +10,10 @@ type BusinessProfile = { name: string; phone?: string | null; address?: string |
 type DeliveryZone = { name: string; kind?: "colony" | "auxiliary"; fee: number; active: boolean };
 type PaymentMethod = { key: "cash" | "transfer"; label: string; active: boolean };
 type Settings = { pending_payment_minutes: number; kitchen_lead_minutes: number; delivery_lead_minutes: number; half_and_half_extra: number; additional_wing_flavor_extra: number; max_wing_flavors: number; delivery_zones: DeliveryZone[]; payment_methods: PaymentMethod[]; show_kitchen_prices: boolean; loyalty_enabled: boolean; loyalty_point_value: number };
+type ReceiptFontSize = "small" | "medium" | "large";
+type Preferences = { receipt_font_size: ReceiptFontSize };
 
-export function SettingsScreen({ token }: { token: string }) {
+export function SettingsScreen({ token, isAdministrator }: { token: string; isAdministrator: boolean }) {
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [logoBase64, setLogoBase64] = useState("");
@@ -21,17 +23,22 @@ export function SettingsScreen({ token }: { token: string }) {
   const [printer, setPrinter] = useState<SavedPrinter | null>(null);
   const [printerBusy, setPrinterBusy] = useState(false);
   const [printerMessage, setPrinterMessage] = useState("");
+  const [preferences, setPreferences] = useState<Preferences | null>(null);
 
   const load = useCallback(async () => {
     setBusy(true); setMessage("");
     try {
-      const [nextProfile, nextSettings] = await Promise.all([
-        api<BusinessProfile>("/business-profile", token), api<Settings>("/settings", token),
-      ]);
-      setProfile({ ...nextProfile, social_links: nextProfile.social_links ?? [] });
-      setSettings(nextSettings);
+      const nextPreferences = await api<Preferences>("/preferences", token);
+      setPreferences(nextPreferences);
+      if (isAdministrator) {
+        const [nextProfile, nextSettings] = await Promise.all([
+          api<BusinessProfile>("/business-profile", token), api<Settings>("/settings", token),
+        ]);
+        setProfile({ ...nextProfile, social_links: nextProfile.social_links ?? [] });
+        setSettings(nextSettings);
+      }
     } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
-  }, [token]);
+  }, [isAdministrator, token]);
   useEffect(() => { load(); }, [load]);
   useEffect(() => { getConfiguredThermalPrinter().then(setPrinter).catch(() => undefined); }, []);
 
@@ -47,6 +54,15 @@ export function SettingsScreen({ token }: { token: string }) {
     catch (error) { setPrinterMessage((error as Error).message); }
     finally { setPrinterBusy(false); }
   }
+  async function changeFontSize(receipt_font_size: ReceiptFontSize) {
+    setPrinterBusy(true); setPrinterMessage("");
+    try {
+      const saved = await api<Preferences>("/preferences", token, { method: "PUT", body: JSON.stringify({ receipt_font_size }) });
+      setPreferences(saved);
+      setPrinterMessage(`Tamaño de letra guardado: ${fontSizeLabels[receipt_font_size]}.`);
+    } catch (error) { setPrinterMessage((error as Error).message); }
+    finally { setPrinterBusy(false); }
+  }
 
   async function saveProfile() {
     if (!profile) return; setBusy(true); setMessage("");
@@ -59,8 +75,8 @@ export function SettingsScreen({ token }: { token: string }) {
     if (!settings) return; setBusy(true); setMessage("");
     try { setSettings(await api<Settings>("/settings", token, { method: "PUT", body: JSON.stringify({ settings }) })); setMessage("Ajustes operativos guardados."); } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
   }
-  if (busy && (!profile || !settings)) return <ActivityIndicator color="#cf4b32" style={styles.loader} />;
-  if (!profile || !settings) return <Text style={styles.notice}>{message || "No fue posible cargar los ajustes."}</Text>;
+  if (busy && (!preferences || (isAdministrator && (!profile || !settings)))) return <ActivityIndicator color="#cf4b32" style={styles.loader} />;
+  if (!preferences || (isAdministrator && (!profile || !settings))) return <Text style={styles.notice}>{message || "No fue posible cargar los ajustes."}</Text>;
 
   function setNumber(key: keyof Settings, value: string) { setSettings((current) => current ? { ...current, [key]: Number(value) || 0 } : current); }
   function setZone(index: number, patch: Partial<DeliveryZone>) { setSettings((current) => current ? { ...current, delivery_zones: current.delivery_zones.map((zone, position) => position === index ? { ...zone, ...patch } : zone) } : current); }
@@ -71,7 +87,9 @@ export function SettingsScreen({ token }: { token: string }) {
     {!!message && <Text style={styles.notice}>{message}</Text>}
     <View style={styles.card}>
       <Text style={styles.title}>Impresora térmica</Text>
-      <Text style={styles.muted}>Configura una sola vez la impresora que utilizará la impresión directa de tickets.</Text>
+      <Text style={styles.muted}>Estas preferencias pertenecen a tu perfil y se aplicarán a los tickets que imprimas.</Text>
+      <Text style={styles.label}>Tamaño de letra del ticket</Text>
+      <View style={styles.fontChoices}>{(["small", "medium", "large"] as ReceiptFontSize[]).map((size) => <Pressable disabled={printerBusy} key={size} style={[styles.fontChoice, preferences.receipt_font_size === size && styles.fontChoiceActive]} onPress={() => changeFontSize(size)}><Text style={[styles.fontChoiceText, size === "small" ? styles.fontPreview_small : size === "medium" ? styles.fontPreview_medium : styles.fontPreview_large]}>{fontSizeLabels[size]}</Text><Text style={styles.fontHint}>{size === "small" ? "Más compacto" : size === "medium" ? "Equilibrado" : "Más legible"}</Text></Pressable>)}</View>
       {isNativeAndroid() ? <>
         <View style={styles.printerStatus}><Text style={styles.subtitle}>{printer?.name ?? "Sin impresora configurada"}</Text><Text style={styles.muted}>{printer ? `${printer.type === "tcp" ? "Wi-Fi / TCP" : "Bluetooth"}${printer.address ? ` · ${printer.address}` : ""}` : "Vincula una impresora Bluetooth en Android o registra su dirección IP."}</Text></View>
         <Text style={styles.label}>Ancho del papel</Text>
@@ -80,6 +98,7 @@ export function SettingsScreen({ token }: { token: string }) {
       </> : <Text style={styles.notice}>La configuración directa está disponible dentro de la aplicación Android. En navegador se utiliza el diálogo de impresión del sistema.</Text>}
       {!!printerMessage && <Text style={styles.notice}>{printerMessage}</Text>}
     </View>
+    {isAdministrator && profile && settings && <>
     <View style={styles.card}>
       <Text style={styles.title}>Datos del negocio y formato de nota</Text>
       <TextInput style={styles.input} value={profile.name} onChangeText={(name) => setProfile({ ...profile, name })} placeholder="Nombre comercial" />
@@ -122,13 +141,16 @@ export function SettingsScreen({ token }: { token: string }) {
       <NumberField label="Valor monetario de cada punto" value={settings.loyalty_point_value} onChange={(value) => setNumber("loyalty_point_value", value)} />
       <Pressable disabled={busy || settings.delivery_zones.some((zone) => !zone.name.trim()) || !settings.payment_methods.some((method) => method.active)} style={[styles.primary, (busy || settings.delivery_zones.some((zone) => !zone.name.trim()) || !settings.payment_methods.some((method) => method.active)) && styles.disabled]} onPress={saveSettings}><Text style={styles.primaryText}>Guardar ajustes operativos</Text></Pressable>
     </View>
+    </>}
   </View>;
 }
+
+const fontSizeLabels: Record<ReceiptFontSize, string> = { small: "Pequeña", medium: "Mediana", large: "Grande" };
 
 function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: string) => void }) {
   return <View style={styles.numberField}><Text style={styles.label}>{label}</Text><TextInput style={styles.input} value={String(value)} onChangeText={onChange} keyboardType="decimal-pad" /></View>;
 }
 
 const styles = StyleSheet.create({
-  container: { gap: 14 }, card: { backgroundColor: "#fffdfa", borderRadius: 16, gap: 12, padding: 18 }, loader: { margin: 40 }, title: { color: "#29231f", fontSize: 18, fontWeight: "900" }, subtitle: { color: "#29231f", fontWeight: "900", marginTop: 6 }, muted: { color: "#796b61" }, label: { color: "#29231f", fontWeight: "700" }, notice: { backgroundColor: "#fff1cc", borderRadius: 10, color: "#5f4918", padding: 12 }, input: { backgroundColor: "white", borderColor: "#ddd1c5", borderRadius: 11, borderWidth: 1, minHeight: 50, paddingHorizontal: 14 }, multiline: { minHeight: 90, paddingVertical: 12, textAlignVertical: "top" }, inline: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 10 }, flex: { flex: 1, minWidth: 160 }, numberField: { flex: 1, gap: 6, minWidth: 190 }, fixedLabel: { fontWeight: "800", minWidth: 110 }, choice: { backgroundColor: "#eee4da", borderRadius: 9, padding: 11 }, choiceActive: { backgroundColor: "#f3b19f" }, primary: { alignItems: "center", backgroundColor: "#cf4b32", borderRadius: 11, justifyContent: "center", minHeight: 50, padding: 12 }, primaryText: { color: "white", fontWeight: "800" }, outlineButton: { alignSelf: "flex-start", borderColor: "#cf4b32", borderRadius: 10, borderWidth: 1, padding: 11 }, outlineText: { color: "#cf4b32", fontWeight: "800" }, dangerButton: { borderColor: "#a82e20", borderRadius: 10, borderWidth: 1, padding: 10 }, dangerText: { color: "#a82e20", fontWeight: "800" }, disabled: { opacity: 0.45 }, zoneCard: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 13, borderWidth: 1, gap: 10, padding: 12 }, printerStatus: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 12, borderWidth: 1, gap: 3, padding: 13 },
+  container: { gap: 14 }, card: { backgroundColor: "#fffdfa", borderRadius: 16, gap: 12, padding: 18 }, loader: { margin: 40 }, title: { color: "#29231f", fontSize: 18, fontWeight: "900" }, subtitle: { color: "#29231f", fontWeight: "900", marginTop: 6 }, muted: { color: "#796b61" }, label: { color: "#29231f", fontWeight: "700" }, notice: { backgroundColor: "#fff1cc", borderRadius: 10, color: "#5f4918", padding: 12 }, input: { backgroundColor: "white", borderColor: "#ddd1c5", borderRadius: 11, borderWidth: 1, minHeight: 50, paddingHorizontal: 14 }, multiline: { minHeight: 90, paddingVertical: 12, textAlignVertical: "top" }, inline: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 10 }, flex: { flex: 1, minWidth: 160 }, numberField: { flex: 1, gap: 6, minWidth: 190 }, fixedLabel: { fontWeight: "800", minWidth: 110 }, choice: { backgroundColor: "#eee4da", borderRadius: 9, padding: 11 }, choiceActive: { backgroundColor: "#f3b19f" }, primary: { alignItems: "center", backgroundColor: "#cf4b32", borderRadius: 11, justifyContent: "center", minHeight: 50, padding: 12 }, primaryText: { color: "white", fontWeight: "800" }, outlineButton: { alignSelf: "flex-start", borderColor: "#cf4b32", borderRadius: 10, borderWidth: 1, padding: 11 }, outlineText: { color: "#cf4b32", fontWeight: "800" }, dangerButton: { borderColor: "#a82e20", borderRadius: 10, borderWidth: 1, padding: 10 }, dangerText: { color: "#a82e20", fontWeight: "800" }, disabled: { opacity: 0.45 }, zoneCard: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 13, borderWidth: 1, gap: 10, padding: 12 }, printerStatus: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 12, borderWidth: 1, gap: 3, padding: 13 }, fontChoices: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, fontChoice: { backgroundColor: "#f8f3ed", borderColor: "#e5d8cb", borderRadius: 11, borderWidth: 1, flex: 1, minWidth: 100, padding: 11 }, fontChoiceActive: { backgroundColor: "#fff0ec", borderColor: "#cf4b32", borderWidth: 2 }, fontChoiceText: { color: "#29231f", fontWeight: "900" }, fontHint: { color: "#796b61", fontSize: 10, marginTop: 3 }, fontPreview_small: { fontSize: 12 }, fontPreview_medium: { fontSize: 15 }, fontPreview_large: { fontSize: 18 },
 });

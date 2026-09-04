@@ -148,12 +148,14 @@ public class DevicePrintPlugin extends Plugin {
     }
 
     private byte[] escPosTicket(String html, int paperWidth) throws Exception {
+        boolean smallFont = html.contains("data-print-font-size=\"small\"");
+        boolean largeFont = html.contains("data-print-font-size=\"large\"");
         String prepared = html.replaceAll("(?is)<head.*?</head>", "").replaceAll("(?is)<script.*?</script>", "").replaceAll("(?is)<style.*?</style>", "")
             .replaceAll("(?is)<button.*?</button>", "").replaceAll("(?is)<img[^>]*>", "").replaceAll("(?i)<br\\s*/?>", "\n").replaceAll("(?i)</(p|div|h1|h2|h3|tr|table)>", "\n").replaceAll("(?i)</(td|th)>", "  ");
         String text = Html.fromHtml(prepared, Html.FROM_HTML_MODE_LEGACY).toString().replace('\u00a0', ' ')
             .replace("🍕", "*").replace("🔥", "*")
             .replaceAll("[ \\t]+", " ").replaceAll(" *\\n *", "\n").replaceAll("\\n{2,}", "\n").trim();
-        int maxChars = paperWidth == 58 ? 42 : 64;
+        int maxChars = paperWidth == 58 ? (smallFont ? 42 : 32) : (smallFont ? 64 : 48);
         String divider = new String(new char[maxChars]).replace('\0', '-');
         text = text.replace("Cliente\n", divider + "\nCLIENTE\n")
             .replace("Pedido\n", divider + "\nPEDIDO\n")
@@ -168,7 +170,10 @@ public class DevicePrintPlugin extends Plugin {
             wrapped.append(remaining).append('\n');
         }
         Charset charset = Charset.forName("CP850"); ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        bytes.write(new byte[] { 0x1B, 0x40 }); bytes.write(new byte[] { 0x1B, 0x4D, 0x01 }); bytes.write(new byte[] { 0x1B, 0x33, 0x12 });
+        bytes.write(new byte[] { 0x1B, 0x40 });
+        bytes.write(new byte[] { 0x1B, 0x4D, (byte) (smallFont ? 0x01 : 0x00) });
+        bytes.write(new byte[] { 0x1B, 0x21, (byte) (largeFont ? 0x10 : 0x00) });
+        bytes.write(new byte[] { 0x1B, 0x33, (byte) (smallFont ? 0x12 : largeFont ? 0x24 : 0x18) });
         bytes.write(new byte[] { 0x1B, 0x74, 0x02 }); bytes.write(wrapped.toString().getBytes(charset));
         bytes.write(new byte[] { 0x0A, 0x0A }); bytes.write(new byte[] { 0x1D, 0x56, 0x41, 0x08 }); return bytes.toByteArray();
     }

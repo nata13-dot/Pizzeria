@@ -30,7 +30,7 @@ import { ProductionScreen } from "./src/features/operations/ProductionScreen";
 import { PurchasesScreen } from "./src/features/operations/PurchasesScreen";
 import { ordersChannel } from "./src/realtime";
 import { registerPush } from "./src/push";
-import { printThermalHtml, type ThermalPaperWidth } from "./src/printing";
+import { getConfiguredThermalPrinter, printThermalHtml, type ThermalPaperWidth } from "./src/printing";
 import { clearSession, readSession, saveSession } from "./src/session";
 import { SystemTheme, ThemeToggle } from "./src/SystemTheme";
 type Session = {
@@ -148,7 +148,8 @@ function screensForUser(user: Session["user"]): Screen[] {
   if (hasPermission(user, "kitchen.use")) screens.push("kitchen");
   if (hasPermission(user, "delivery.use")) screens.push("delivery");
   if (hasPermission(user, "customers.manage")) screens.push("customers");
-  if (hasPermission(user, "*")) screens.push("users", "reports", "settings");
+  if (hasPermission(user, "*")) screens.push("users", "reports");
+  screens.push("settings");
   return screens;
 }
 export default function App() {
@@ -275,7 +276,7 @@ function PizzeriaApp() {
           ) : currentScreen === "users" ? (
             <UsersScreen token={session.token} currentUserId={session.user.id} />
           ) : currentScreen === "settings" ? (
-            <SettingsScreen token={session.token} />
+            <SettingsScreen token={session.token} isAdministrator={isAdministrator} />
           ) : currentScreen === "inventory" ? (
             <InventoryScreen token={session.token} isAdministrator={isAdministrator} />
           ) : currentScreen === "purchases" ? (
@@ -958,13 +959,14 @@ function OrderContents({ order }: { order: Order }) {
 type OrderStatusAction = (order: Order, status: OrderStatus) => Promise<boolean>;
 function KitchenBoard({ orders, token, onAction }: { orders: Order[]; token: string; onAction: OrderStatusAction }) {
   const { width } = useWindowDimensions();
-  const compact = width < 920;
+  const compact = width < 780;
+  const [activeStatus, setActiveStatus] = useState<OrderStatus>("kitchen_pending");
   const [workingOrderIds, setWorkingOrderIds] = useState<number[]>([]);
   const actionLocks = useRef(new Set<number>());
-  const columns: { status: OrderStatus; title: string }[] = [
-    { status: "kitchen_pending", title: "Pendientes" },
-    { status: "preparing", title: "En preparación" },
-    { status: "prepared", title: "Preparados" },
+  const columns: { status: OrderStatus; title: string; empty: string; icon: string }[] = [
+    { status: "kitchen_pending", title: "Pendientes", empty: "No hay pedidos pendientes", icon: "▱" },
+    { status: "preparing", title: "Preparando", empty: "No hay pedidos en preparación", icon: "♨" },
+    { status: "prepared", title: "Listos", empty: "No hay pedidos listos para entregar", icon: "✓" },
   ];
   async function advance(order: Order) {
     if (actionLocks.current.has(order.id)) return;
@@ -979,49 +981,87 @@ function KitchenBoard({ orders, token, onAction }: { orders: Order[]; token: str
       setWorkingOrderIds((current) => current.filter((id) => id !== order.id));
     }
   }
-  return <View style={[s.board, compact && s.boardCompact]}>{columns.map(({ status, title }) => {
+  const visibleColumns = compact ? columns.filter((column) => column.status === activeStatus) : columns;
+  return <View style={s.kitchenBoard}>
+    {compact && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.kitchenTabs}>{columns.map((column) => {
+      const count = orders.filter((order) => order.status === column.status).length;
+      const tone = kitchenTone(column.status);
+      return <Pressable key={column.status} onPress={() => setActiveStatus(column.status)} style={[s.kitchenTab, activeStatus === column.status && s.kitchenTabActive, activeStatus === column.status && { borderBottomColor: tone }]}><Text style={[s.kitchenTabText, activeStatus === column.status && { color: tone }]}>{column.title} ({count})</Text></Pressable>;
+    })}</ScrollView>}
+    <View style={[s.board, compact && s.boardCompact]}>{visibleColumns.map(({ status, title, empty, icon }) => {
     const columnOrders = orders.filter((order) => order.status === status);
+    const tone = kitchenTone(status);
     return <View style={[s.boardColumn, compact && s.boardColumnCompact]} key={status}>
-      <Text style={s.boardTitle}>{title} ({columnOrders.length})</Text>
+      {!compact && <Text style={[s.boardTitle, { color: tone }]}>{title.toUpperCase()} ({columnOrders.length})</Text>}
       {columnOrders.map((order) => {
         const working = workingOrderIds.includes(order.id);
-        return <View style={s.order} key={order.id}>
-        <Pressable disabled={working} style={[s.smallButton, compact && s.kitchenActionCompact, working && s.disabled]} onPress={() => advance(order)}>
-          {working ? <ActivityIndicator color="white" /> : <Text style={s.primaryText}>{status === "kitchen_pending" ? "Iniciar" : status === "preparing" ? "Marcar preparada" : order.type === "delivery" ? "Lista para reparto" : "Lista para recoger"}</Text>}
-        </Pressable>
-        <OrderContents order={order} />
-        <KitchenElapsedTime order={order} />
-        <DocumentButton order={order} token={token} kind="kitchen" />
-      </View>})}
-      {!columnOrders.length && <Text style={s.empty}>Sin pedidos</Text>}
+        return <View style={s.kitchenOrder} key={order.id}>
+          <View style={s.kitchenOrderHeader}><Text style={s.kitchenOrderNo}>#{String(order.daily_number).padStart(3, "0")}</Text><KitchenTimerBadge order={order} /></View>
+          <View style={s.kitchenBadges}><Text style={s.kitchenTypeBadge}>{kitchenServiceLabel(order)}</Text>{kitchenCustomerLabel(order) && <Text numberOfLines={1} style={s.kitchenCustomerBadge}>{kitchenCustomerLabel(order)}</Text>}</View>
+          <View style={s.kitchenProducts}>{(order.items ?? []).map((item, index) => <KitchenItem item={item} key={item.id ?? `${item.name}-${index}`} />)}</View>
+          {!!order.notes && <View style={s.kitchenNote}><Text style={s.kitchenNoteTitle}>NOTA DEL CLIENTE</Text><Text style={s.kitchenNoteText}>{order.notes}</Text></View>}
+          <Text style={s.kitchenStageTime}>{kitchenStageTime(order)}</Text>
+          <Pressable disabled={working} style={[s.kitchenAction, { backgroundColor: tone }, working && s.disabled]} onPress={() => advance(order)}>{working ? <ActivityIndicator color="white" /> : <Text style={s.kitchenActionText}>{status === "kitchen_pending" ? "♨  INICIAR PREPARACIÓN" : status === "preparing" ? "✓  TERMINAR" : order.type === "delivery" ? "▣  LISTO PARA REPARTO" : "▣  LISTO PARA ENTREGAR"}</Text>}</Pressable>
+          <DocumentButton order={order} token={token} kind="kitchen" compact />
+        </View>})}
+      {!columnOrders.length && <View style={s.kitchenEmpty}><Text style={[s.kitchenEmptyIcon, { color: tone }]}>{icon}</Text><Text style={s.kitchenEmptyTitle}>{empty}</Text><View style={[s.kitchenEmptyLine, { backgroundColor: tone }]} /></View>}
     </View>;
-  })}</View>;
+  })}</View></View>;
 }
 function latestHistoryDate(order: Order, status: OrderStatus): string | undefined {
   return order.histories
     ?.filter((history) => history.to_status === status && Number.isFinite(Date.parse(history.created_at)))
     .sort((left, right) => Date.parse(right.created_at) - Date.parse(left.created_at))[0]?.created_at;
 }
-function KitchenElapsedTime({ order }: { order: Order }) {
+function kitchenTone(status: OrderStatus): string {
+  return status === "kitchen_pending" ? "#df3328" : status === "preparing" ? "#f07a0a" : "#239441";
+}
+function kitchenServiceLabel(order: Order): string {
+  if (order.type === "delivery") return "ENTREGA";
+  if (order.type === "dine_in") return "LOCAL";
+  return "RECOGER · LOCAL";
+}
+function kitchenCustomerLabel(order: Order): string {
+  return order.delivery?.recipient || order.customer?.name || "";
+}
+function kitchenStatusDate(order: Order): string | undefined {
   const kitchenPendingAt = latestHistoryDate(order, "kitchen_pending");
   const preparingAt = latestHistoryDate(order, "preparing");
   const preparedAt = latestHistoryDate(order, "prepared");
-  if (order.status === "kitchen_pending") return <ElapsedTime label="En cola" from={kitchenPendingAt} />;
-  if (order.status === "preparing") return <ElapsedTime label="En preparación" from={preparingAt} />;
-  return <ElapsedTime label="Tiempo de preparación" from={preparingAt ?? kitchenPendingAt} to={preparedAt} />;
+  if (order.status === "preparing") return preparingAt ?? kitchenPendingAt ?? order.created_at;
+  if (order.status === "prepared") return preparedAt ?? preparingAt ?? kitchenPendingAt ?? order.created_at;
+  return kitchenPendingAt ?? order.created_at;
 }
-function ElapsedTime({ from, to, label }: { from?: string; to?: string; label: string }) {
+function KitchenTimerBadge({ order }: { order: Order }) {
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
-    if (to) return;
     const timer = setInterval(() => setNow(Date.now()), 60000);
     return () => clearInterval(timer);
-  }, [to]);
+  }, []);
+  const from = kitchenStatusDate(order);
   if (!from) return null;
   const fromTime = Date.parse(from);
-  const toTime = to ? Date.parse(to) : now;
-  if (!Number.isFinite(fromTime) || !Number.isFinite(toTime)) return null;
-  return <Text style={s.timer}>⏱ {label}: {Math.max(0, Math.floor((toTime - fromTime) / 60000))} min</Text>;
+  if (!Number.isFinite(fromTime)) return null;
+  const minutes = Math.max(0, Math.floor((now - fromTime) / 60000));
+  const color = order.status === "prepared" ? "#239441" : minutes >= 20 ? "#df3328" : minutes >= 10 ? "#f07a0a" : "#239441";
+  return <Text style={[s.kitchenTimer, { color }]}>◷ {order.status === "prepared" ? "Listo" : `${minutes} min`}</Text>;
+}
+function kitchenStageTime(order: Order): string {
+  const source = kitchenStatusDate(order);
+  if (!source || !Number.isFinite(Date.parse(source))) return "";
+  const time = new Date(source).toLocaleTimeString("es-MX", { hour: "numeric", minute: "2-digit" });
+  return order.status === "preparing" ? `Preparando desde ${time}` : order.status === "prepared" ? `Listo desde ${time}` : `Pedido: ${time}`;
+}
+function KitchenItem({ item }: { item: OrderItem }) {
+  const flavors = (item.flavors ?? []).map((flavor) => flavor.flavor?.name ?? flavor.name).filter((name): name is string => !!name);
+  const modifiers = (item.modifiers ?? []).map((modifier) => modifier.name);
+  return <View style={s.kitchenItem}>
+    <Text style={s.kitchenItemName}>{quantityLabel(item.quantity)} × {item.name}</Text>
+    {!!flavors.length && <Text style={s.kitchenItemOption}>· {flavors.join(" / ")}</Text>}
+    {!!modifiers.length && <Text style={s.kitchenItemOption}>· {modifiers.join(", ")}</Text>}
+    {(item.components ?? []).map((component, index) => <Text style={s.kitchenItemOption} key={component.id ?? `${component.name}-${index}`}>· {quantityLabel(component.quantity)} × {component.name}{component.flavors?.length ? ` · ${component.flavors.join(" / ")}` : ""}</Text>)}
+    {!!item.notes && <Text style={s.kitchenItemNote}>· {item.notes}</Text>}
+  </View>;
 }
 function DeliveryBoard({ orders, token, onAction, onReload }: { orders: Order[]; token: string; onAction: OrderStatusAction; onReload: () => void }) {
   const [paymentError, setPaymentError] = useState("");
@@ -1300,10 +1340,11 @@ function Metric({ label, value }: { label: string; value: string }) {
     </View>
   );
 }
-function DocumentButton({ order, token, kind }: { order: Order; token: string; kind: "kitchen" | "delivery" }) {
+function DocumentButton({ order, token, kind, compact = false }: { order: Order; token: string; kind: "kitchen" | "delivery"; compact?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [paperWidth, setPaperWidth] = useState<ThermalPaperWidth>(80);
+  useEffect(() => { getConfiguredThermalPrinter().then((printer) => { if (printer?.paperWidth) setPaperWidth(printer.paperWidth); }).catch(() => undefined); }, []);
   async function generate(action: "print" | "share") {
     setBusy(true);
     setMessage("");
@@ -1327,6 +1368,7 @@ function DocumentButton({ order, token, kind }: { order: Order; token: string; k
       setBusy(false);
     }
   }
+  if (compact) return <View style={s.kitchenPrintArea}><Pressable disabled={busy} onPress={() => generate("print")}><Text style={s.kitchenPrintText}>{busy ? "Preparando comanda..." : `Imprimir comanda · ${paperWidth} mm`}</Text></Pressable>{!!message && <Text style={s.kitchenPrintMessage}>{message}</Text>}</View>;
   return (
     <View style={s.documentActions}>
       <View style={s.types}>{([58, 80] as ThermalPaperWidth[]).map((width) => <Pressable key={width} onPress={() => setPaperWidth(width)} style={[s.type, paperWidth === width && s.typeActive]}><Text>{width} mm</Text></Pressable>)}</View>
@@ -2040,11 +2082,41 @@ const s = StyleSheet.create({
     textAlignVertical: "top",
   },
   reportLayout: { flex: 1, gap: 12 },
-  board: { flexDirection: "row", flexWrap: "wrap", gap: 14, alignItems: "flex-start" },
-  boardCompact: { flexDirection: "column", flexWrap: "nowrap" },
-  boardColumn: { flex: 1, minWidth: 270, backgroundColor: "#eee4da", padding: 12, borderRadius: 16 },
+  kitchenBoard: { gap: 12 },
+  kitchenTabs: { borderBottomColor: "#eee4da", borderBottomWidth: 1, minWidth: "100%" },
+  kitchenTab: { alignItems: "center", borderBottomColor: "transparent", borderBottomWidth: 2, flex: 1, minWidth: 108, paddingHorizontal: 10, paddingVertical: 11 },
+  kitchenTabActive: { borderBottomWidth: 2 },
+  kitchenTabText: { color: "#514943", fontSize: 12, fontWeight: "800" },
+  board: { alignItems: "flex-start", flexDirection: "row", gap: 12 },
+  boardCompact: { flexDirection: "column" },
+  boardColumn: { borderLeftColor: "#eee4da", borderLeftWidth: 1, flex: 1, gap: 9, minWidth: 0, paddingHorizontal: 10 },
   boardColumnCompact: { minWidth: 0, width: "100%" },
-  boardTitle: { fontSize: 18, fontWeight: "900", marginBottom: 10, color: "#29231f" },
+  boardTitle: { fontSize: 13, fontWeight: "900", letterSpacing: .5, marginBottom: 4, textAlign: "center" },
+  kitchenOrder: { backgroundColor: "#fffdfa", borderColor: "#eee4da", borderRadius: 12, borderWidth: 1, gap: 9, padding: 12, shadowColor: "#29231f", shadowOffset: { height: 2, width: 0 }, shadowOpacity: .05, shadowRadius: 6, width: "100%" },
+  kitchenOrderHeader: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" },
+  kitchenOrderNo: { color: "#29231f", fontSize: 19, fontWeight: "900" },
+  kitchenTimer: { fontSize: 11, fontWeight: "900" },
+  kitchenBadges: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 5 },
+  kitchenTypeBadge: { backgroundColor: "#eee4da", borderRadius: 5, color: "#4f453f", fontSize: 8, fontWeight: "900", overflow: "hidden", paddingHorizontal: 6, paddingVertical: 4 },
+  kitchenCustomerBadge: { backgroundColor: "#f8eee9", borderRadius: 5, color: "#7a3c2e", flexShrink: 1, fontSize: 9, fontWeight: "800", overflow: "hidden", paddingHorizontal: 6, paddingVertical: 4 },
+  kitchenProducts: { borderBottomColor: "#eee4da", borderBottomWidth: 1, borderTopColor: "#eee4da", borderTopWidth: 1, gap: 7, paddingVertical: 9 },
+  kitchenItem: { gap: 2 },
+  kitchenItemName: { color: "#29231f", fontSize: 12, fontWeight: "900" },
+  kitchenItemOption: { color: "#514943", fontSize: 10, paddingLeft: 8 },
+  kitchenItemNote: { color: "#a34a20", fontSize: 10, fontWeight: "700", paddingLeft: 8 },
+  kitchenNote: { backgroundColor: "#fff8e9", borderRadius: 7, gap: 2, padding: 7 },
+  kitchenNoteTitle: { color: "#776b60", fontSize: 8, fontWeight: "900" },
+  kitchenNoteText: { color: "#4f453f", fontSize: 10 },
+  kitchenStageTime: { color: "#796b61", fontSize: 9 },
+  kitchenAction: { alignItems: "center", borderRadius: 6, justifyContent: "center", minHeight: 36, paddingHorizontal: 8, paddingVertical: 8 },
+  kitchenActionText: { color: "white", fontSize: 10, fontWeight: "900" },
+  kitchenPrintArea: { alignItems: "center", gap: 3 },
+  kitchenPrintText: { color: "#8c4c3d", fontSize: 9, fontWeight: "800", textDecorationLine: "underline" },
+  kitchenPrintMessage: { color: "#796b61", fontSize: 8, textAlign: "center" },
+  kitchenEmpty: { alignItems: "center", backgroundColor: "#fffdfa", borderColor: "#eee4da", borderRadius: 12, borderWidth: 1, gap: 9, justifyContent: "center", minHeight: 190, padding: 24 },
+  kitchenEmptyIcon: { fontSize: 40, fontWeight: "300" },
+  kitchenEmptyTitle: { color: "#29231f", fontSize: 12, fontWeight: "800", maxWidth: 160, textAlign: "center" },
+  kitchenEmptyLine: { borderRadius: 2, height: 2, marginTop: 5, width: 36 },
   timer: { color: "#9a5b19", fontWeight: "800" },
   scheduled: { color: "#7b3fad", fontWeight: "800" },
   paid: { color: "#287347", fontWeight: "900", paddingVertical: 8 },
