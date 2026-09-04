@@ -14,10 +14,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   useWindowDimensions,
   View,
 } from "react-native";
+import { FloatingTextInput as TextInput } from "./src/components/FloatingTextInput";
 import { api, ApiError, type ApiStockWarning, setUnauthorizedHandler } from "./src/api";
 import { CashScreen } from "./src/features/administration/CashScreen";
 import { CustomersScreen } from "./src/features/administration/CustomersScreen";

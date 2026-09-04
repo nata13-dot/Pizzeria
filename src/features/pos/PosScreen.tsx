@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
 import { api, ApiError, type ApiStockWarning } from "../../api";
 import { getConfiguredThermalPrinter, isNativeAndroid, printThermalHtml, printThermalHtmlWithAndroid, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
 

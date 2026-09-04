@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
 import { api } from "../../api";
 
 type Permission = { id: number; name: string; slug: string };

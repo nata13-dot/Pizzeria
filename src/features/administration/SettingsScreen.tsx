@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
 import { api } from "../../api";
 import { getConfiguredThermalPrinter, isNativeAndroid, saveThermalPaperWidth, selectThermalPrinter, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
 import { LogoPicker } from "./LogoPicker";

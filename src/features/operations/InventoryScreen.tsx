@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, Text, TextInput, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
 import { api } from "../../api";
 import type {
   Ingredient,

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
 import { api } from "../../api";
 
 type Address = { id: number; label: string; address: string; references?: string | null; map_url?: string | null; delivery_zone?: string | null; notes?: string | null; is_default: boolean };
