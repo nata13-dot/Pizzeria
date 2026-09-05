@@ -4,6 +4,7 @@ import { FloatingTextInput as TextInput } from "../../components/FloatingTextInp
 import { confirmAction } from "../../components/ConfirmationDialog";
 import { api, ApiError, type ApiStockWarning } from "../../api";
 import { useCartAddedFeedback } from "../../haptics";
+import { useKitchenSentSound } from "../../sounds";
 import { getConfiguredThermalPrinter, isNativeAndroid, printThermalHtml, printThermalHtmlWithAndroid, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
 
 type Flavor = { id: number; name: string };
@@ -39,6 +40,7 @@ function scheduledIso(value: string): string | undefined {
 
 export function PosScreen({ token, isAdministrator, canOverrideStock }: { token: string; isAdministrator: boolean; canOverrideStock: boolean }) {
   const cartAddedFeedback = useCartAddedFeedback();
+  const playKitchenSentSound = useKitchenSentSound();
   const { width } = useWindowDimensions();
   const compact = width < 900;
   const [products, setProducts] = useState<Product[]>([]); const [categories, setCategories] = useState<Category[]>([]); const [combos, setCombos] = useState<Combo[]>([]); const [customers, setCustomers] = useState<Customer[]>([]); const [settings, setSettings] = useState(defaultSettings);
@@ -110,7 +112,7 @@ export function PosScreen({ token, isAdministrator, canOverrideStock }: { token:
   function reset() { setCart([]); setCustomerId(null); setAddressId(null); setSalesChannel("local"); setPickup(false); setRecipient(""); setPhone(""); setAddress(""); setReferences(""); setMapUrl(""); setZone(""); setPayment(settings.payment_methods.find((method) => method.active)?.key ?? "cash"); setCashAmount(""); setCollectOnDelivery(false); setScheduledAt(""); setNotes(""); setIdempotencyKey(newKey()); }
 
   async function sendToKitchen(order: Order, allow = false): Promise<boolean> {
-    try { const sent = await api<Order>(`/orders/${order.id}/send-to-kitchen`, token, { method: "POST", body: allow ? JSON.stringify({ allow_stock_shortage: true }) : undefined }); setPendingKitchen(null); setLastOrder(sent); setMessage(`Orden #${sent.daily_number} enviada a cocina.`); return true; }
+    try { const sent = await api<Order>(`/orders/${order.id}/send-to-kitchen`, token, { method: "POST", body: allow ? JSON.stringify({ allow_stock_shortage: true }) : undefined }); setPendingKitchen(null); setLastOrder(sent); playKitchenSentSound(); setMessage(`Orden #${sent.daily_number} enviada a cocina.`); return true; }
     catch (error) { if (error instanceof ApiError && error.code === "stock_shortage") { setPendingKitchen({ order, warnings: error.stockWarnings, error: error.message }); setMessage(canOverrideStock ? "La orden fue creada; autoriza el faltante para enviarla a cocina." : "La orden fue creada, pero requiere autorización administrativa por falta de inventario."); return false; } setPendingKitchen({ order, warnings: [], error: (error as Error).message }); setMessage("La orden fue creada, pero su envío a cocina falló. Reintenta esta misma orden."); return false; }
   }
   async function retryKitchen() { if (!pendingKitchen || sending.current) return; const allow = pendingKitchen.warnings.length > 0; if (allow && !canOverrideStock) { setMessage("Inicia sesión con un usuario que tenga permiso para autorizar faltantes."); return; } if (allow && !await confirmAction("Se consumirá la existencia disponible y quedará auditado el faltante. ¿Continuar?")) return; sending.current = true; setBusy(true); try { await sendToKitchen(pendingKitchen.order, allow); } finally { sending.current = false; setBusy(false); } }

@@ -35,6 +35,7 @@ import { getConfiguredThermalPrinter, printThermalHtml, type ThermalPaperWidth }
 import { clearSession, readSession, saveSession } from "./src/session";
 import { setSystemFontSize, SystemTheme, ThemeToggle } from "./src/SystemTheme";
 import { useCartAddedFeedback } from "./src/haptics";
+import { useKitchenSentSound, useNavigationSound } from "./src/sounds";
 type Session = {
   token: string;
   expires_at?: string;
@@ -173,6 +174,7 @@ export default function App() {
   return <><SystemTheme /><AppErrorBoundary><PizzeriaApp /><ConfirmationDialogHost /></AppErrorBoundary></>;
 }
 function PizzeriaApp() {
+  const playNavigationSound = useNavigationSound();
   const [session, setSession] = useState<Session | null>(null);
   const [restoringSession, setRestoringSession] = useState(true);
   const [screen, setScreen] = useState<Screen>("dashboard");
@@ -261,7 +263,12 @@ function PizzeriaApp() {
   const mobilePriority: Screen[] = ["dashboard", "pos", "orders", "kitchen", "delivery", "cash"];
   const quickScreens = mobilePriority.filter((item) => visibleScreens.includes(item)).slice(0, 4);
   const changeScreen = (next: Screen) => {
-    if (next !== screenRef.current) screenHistory.current.push(screenRef.current);
+    if (next === screenRef.current) {
+      setMobileMenuOpen(false);
+      return;
+    }
+    playNavigationSound();
+    screenHistory.current.push(screenRef.current);
     screenRef.current = next;
     setScreen(next);
     setMobileMenuOpen(false);
@@ -611,6 +618,7 @@ function localDateKey(date = new Date()): string {
 }
 
 function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; branchId: number; isAdministrator: boolean }) {
+  const playKitchenSentSound = useKitchenSentSound();
   const { width } = useWindowDimensions();
   const compact = width < 780;
   const [date, setDate] = useState(localDateKey);
@@ -760,6 +768,7 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
         body: allowStockShortage ? JSON.stringify({ allow_stock_shortage: true }) : undefined,
       });
       clearSendFailure(order.id);
+      playKitchenSentSound();
       setNotice(`Orden #${order.daily_number} enviada a cocina${allowStockShortage ? " con faltante autorizado" : ""}.`);
       await load(false);
       return true;
@@ -1430,6 +1439,7 @@ function stockWarningDescription(warnings: ApiStockWarning[]): string {
 }
 function Pos({ products, token }: { products: Product[]; token: string }) {
   const cartAddedFeedback = useCartAddedFeedback();
+  const playKitchenSentSound = useKitchenSentSound();
   type Cart = {
     variantId: number;
     name: string;
@@ -1515,6 +1525,7 @@ function Pos({ products, token }: { products: Product[]; token: string }) {
       });
       setPendingKitchenSend(null);
       setLastOrder(sent);
+      playKitchenSentSound();
       setMessage(
         `Orden #${sent.daily_number} enviada a cocina.${sent.stock_warnings?.length ? " Advertencias autorizadas: " + sent.stock_warnings.map((warning) => `${warning.name} (-${warning.shortage})`).join(", ") : ""}`,
       );
