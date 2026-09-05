@@ -1,5 +1,27 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://pizzeria-api-production-2bf0.up.railway.app/api";
+export const API_CACHE_PREFIX = "pizzeria-api-cache:v1:";
 let unauthorizedHandler: (() => void) | null = null;
+
+export function apiCacheScope(token?: string): string {
+  let hash = 2166136261;
+  for (const character of token ?? "public") {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+export async function clearApiCache(token?: string): Promise<void> {
+  try {
+    const prefix = `${API_CACHE_PREFIX}${apiCacheScope(token)}:`;
+    const keys = (await AsyncStorage.getAllKeys()).filter((key) => key.startsWith(prefix));
+    if (keys.length) await AsyncStorage.multiRemove(keys);
+  } catch {
+    // Cache failures must never block normal app operations.
+  }
+}
 
 export type ApiStockWarning = {
   ingredient_id?: number;
@@ -116,6 +138,8 @@ export async function api<T>(
       validationErrors || payload.message || `Error de API (${response.status})`,
     );
   }
+
+  if ((options.method ?? "GET").toUpperCase() !== "GET" && token) await clearApiCache(token);
 
   return rawData as T;
 }
