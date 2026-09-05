@@ -1,6 +1,6 @@
 # Notificaciones de pedidos
 
-La app muestra una notificación del sistema cuando recibe un evento de pedido: nuevo pedido para cocina, pedido listo para entrega o reparto y salida a reparto. El canal `orders_kitchen_bell` usa el sonido `campanilla.wav` incluido en la APK.
+La app muestra una notificación del sistema cuando recibe un evento de pedido: nuevo pedido para cocina, pedido listo para entrega o reparto y salida a reparto. El canal `orders_arrival_tone_v2` usa el sonido `notification_arrival.wav` incluido en la APK.
 
 Para recibirlas mientras la APK está abierta, configura Reverb por HTTPS/WSS al compilar:
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, Image, Linking, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
+import { confirmAction } from "../../components/ConfirmationDialog";
 import { api, ApiError, type ApiStockWarning } from "../../api";
 import { cartAddedFeedback } from "../../haptics";
 import { getConfiguredThermalPrinter, isNativeAndroid, printThermalHtml, printThermalHtmlWithAndroid, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
@@ -27,10 +28,6 @@ type PendingKitchen = { order: Order; warnings: ApiStockWarning[]; error: string
 
 const defaultSettings: OperationalSettings = { half_and_half_extra: 0, additional_wing_flavor_extra: 0, max_wing_flavors: 2, delivery_zones: [], payment_methods: [{ key: "cash", label: "Efectivo", active: true }, { key: "transfer", label: "Transferencia", active: true }] };
 
-function confirmAction(message: string): Promise<boolean> {
-  if (Platform.OS === "web") return Promise.resolve(globalThis.confirm(message));
-  return new Promise((resolve) => Alert.alert("Confirmar", message, [{ text: "Cancelar", style: "cancel", onPress: () => resolve(false) }, { text: "Aceptar", onPress: () => resolve(true) }], { cancelable: true, onDismiss: () => resolve(false) }));
-}
 function newKey(): string { return `pos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`; }
 function scheduledIso(value: string): string | undefined {
   const input = value.trim(); if (!input) return undefined;

@@ -7,8 +7,8 @@ import { LocalNotifications } from "@capacitor/local-notifications";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { api } from "./api";
 
-const ORDERS_CHANNEL = "orders_kitchen_bell";
-const KITCHEN_BELL_SOUND = "campanilla.wav";
+const ORDERS_CHANNEL = "orders_arrival_tone_v2";
+const NOTIFICATION_SOUND = "notification_arrival.wav";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({ shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true }),
@@ -18,10 +18,10 @@ export async function registerPush(token: string): Promise<void> {
   if (Capacitor.isNativePlatform()) {
     await PushNotifications.createChannel({
       id: ORDERS_CHANNEL,
-      name: "Pedidos con campanilla",
+      name: "Avisos de pedidos",
       description: "Pedidos nuevos y pedidos listos para entregar.",
       importance: 5,
-      sound: KITCHEN_BELL_SOUND,
+      sound: NOTIFICATION_SOUND,
       vibration: true,
       lights: true,
       lightColor: "#CF4B32",
@@ -51,7 +51,7 @@ export async function registerPush(token: string): Promise<void> {
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 180, 250],
       lightColor: "#CF4B32",
-      sound: KITCHEN_BELL_SOUND,
+      sound: NOTIFICATION_SOUND,
     });
   }
   const current = await Notifications.getPermissionsAsync();
@@ -73,12 +73,12 @@ export async function showOrderNotification(title: string, body: string, data: R
   if (Capacitor.isNativePlatform()) {
     await LocalNotifications.createChannel({
       id: ORDERS_CHANNEL,
-      name: "Pedidos con campanilla",
+      name: "Avisos de pedidos",
       description: "Avisos de cocina, entrega y reparto.",
       importance: 5,
       visibility: 1,
       vibration: true,
-      sound: KITCHEN_BELL_SOUND,
+      sound: NOTIFICATION_SOUND,
     });
     const permission = await LocalNotifications.requestPermissions();
     if (permission.display !== "granted") return;
@@ -100,5 +100,5 @@ export async function showOrderNotification(title: string, body: string, data: R
     if (permission === "granted") new Notification(title, { body, data, icon: "/favicon.ico" });
     return;
   }
-  await Notifications.scheduleNotificationAsync({ content: { title, body, data, sound: KITCHEN_BELL_SOUND }, trigger: null });
+  await Notifications.scheduleNotificationAsync({ content: { title, body, data, sound: NOTIFICATION_SOUND }, trigger: null });
 }

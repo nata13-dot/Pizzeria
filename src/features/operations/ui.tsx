@@ -1,14 +1,13 @@
 import type { ReactNode } from "react";
 import {
   ActivityIndicator,
-  Alert,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { api } from "../../api";
+export { confirmAction } from "../../components/ConfirmationDialog";
 import type { NumericValue, Paginated } from "./types";
 
 export async function fetchPage<T>(path: string, token: string, page = 1): Promise<Paginated<T>> {
@@ -84,19 +83,6 @@ export function localDateTimeValue(date = new Date()): string {
   const hours = String(date.getHours()).padStart(2, "0");
   const minutes = String(date.getMinutes()).padStart(2, "0");
   return `${localDateValue(date)}T${hours}:${minutes}`;
-}
-
-export function confirmAction(message: string): Promise<boolean> {
-  if (Platform.OS === "web") return Promise.resolve(globalThis.confirm(message));
-  return new Promise((resolve) => Alert.alert(
-    "Confirmar acción",
-    message,
-    [
-      { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
-      { text: "Aceptar", onPress: () => resolve(true) },
-    ],
-    { cancelable: true, onDismiss: () => resolve(false) },
-  ));
 }
 
 export function Tabs({

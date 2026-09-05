@@ -4,7 +4,6 @@ import { Capacitor } from "@capacitor/core";
 import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   Image,
   Linking,
@@ -19,6 +18,7 @@ import {
   View,
 } from "react-native";
 import { FloatingTextInput as TextInput } from "./src/components/FloatingTextInput";
+import { ConfirmationDialogHost, confirmAction } from "./src/components/ConfirmationDialog";
 import { api, ApiError, type ApiStockWarning, setUnauthorizedHandler } from "./src/api";
 import { CashScreen } from "./src/features/administration/CashScreen";
 import { CustomersScreen } from "./src/features/administration/CustomersScreen";
@@ -170,7 +170,7 @@ function screensForUser(user: Session["user"]): Screen[] {
   return screens;
 }
 export default function App() {
-  return <><SystemTheme /><AppErrorBoundary><PizzeriaApp /></AppErrorBoundary></>;
+  return <><SystemTheme /><AppErrorBoundary><PizzeriaApp /><ConfirmationDialogHost /></AppErrorBoundary></>;
 }
 function PizzeriaApp() {
   const [session, setSession] = useState<Session | null>(null);
@@ -568,13 +568,6 @@ function DataScreen({ screen, token, branchId, isAdministrator }: { screen: Scre
   </View>;
   return <Empty />;
 }
-function confirmOperation(message: string): Promise<boolean> {
-  if (Platform.OS === "web") return Promise.resolve(globalThis.confirm(message));
-  return new Promise((resolve) => Alert.alert("Confirmar acción", message, [
-    { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
-    { text: "Aceptar", onPress: () => resolve(true) },
-  ], { cancelable: true, onDismiss: () => resolve(false) }));
-}
 async function openPhoneDialer(phone?: string | null): Promise<void> {
   const normalized = (phone ?? "").trim().replace(/[^\d+]/g, "");
   if (!normalized) return;
@@ -735,7 +728,7 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
         : collectOnDelivery
           ? `¿Confirmas la orden #${order.daily_number} con cobro de $${total.toFixed(2)} contra entrega?`
           : `¿Confirmas el pago en efectivo de $${total.toFixed(2)} para la orden #${order.daily_number}?`;
-      if (!(await confirmOperation(paymentMessage))) return;
+      if (!(await confirmAction(paymentMessage))) return;
       try {
         await api<Order>(`/orders/${order.id}/confirm`, token, {
           method: "POST",
@@ -779,7 +772,7 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
           setActionError(`La orden #${order.daily_number} requiere que un administrador autorice el faltante de inventario.`);
           return false;
         }
-        if (!allowStockShortage && await confirmOperation(`${stockWarningDescription(warnings)}\n\n¿Autorizas el faltante y el envío de la orden #${order.daily_number} a cocina?`)) {
+        if (!allowStockShortage && await confirmAction(`${stockWarningDescription(warnings)}\n\n¿Autorizas el faltante y el envío de la orden #${order.daily_number} a cocina?`)) {
           return performKitchenSend(order, true);
         }
         return false;
@@ -810,14 +803,14 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
           setActionError(`La orden #${order.daily_number} requiere que un administrador autorice el faltante de inventario.`);
           return;
         }
-        if (!(await confirmOperation(`${stockWarningDescription(failure.warnings)}\n\n¿Autorizas el faltante y el envío de la orden #${order.daily_number} a cocina?`))) return;
+        if (!(await confirmAction(`${stockWarningDescription(failure.warnings)}\n\n¿Autorizas el faltante y el envío de la orden #${order.daily_number} a cocina?`))) return;
         await performKitchenSend(order, true);
         return;
       }
       const prompt = failure
         ? `¿Deseas reintentar únicamente el envío de la orden #${order.daily_number} a cocina?`
         : `¿Deseas enviar la orden #${order.daily_number} a cocina?`;
-      if (await confirmOperation(prompt)) await performKitchenSend(order, false);
+      if (await confirmAction(prompt)) await performKitchenSend(order, false);
     } finally {
       finishAction(order.id);
     }
@@ -835,7 +828,7 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
       const wasteWarning = advanced
         ? " La preparación ya inició y la cancelación puede registrar merma."
         : "";
-      if (!(await confirmOperation(`¿Confirmas cancelar la orden #${order.daily_number}?${wasteWarning}`))) return;
+      if (!(await confirmAction(`¿Confirmas cancelar la orden #${order.daily_number}?${wasteWarning}`))) return;
       try {
         await api<Order>(`/orders/${order.id}/cancel`, token, {
           method: "POST",
@@ -866,7 +859,7 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
   async function markDelivered(order: Order): Promise<void> {
     if (!beginAction(order.id)) return;
     try {
-      if (!(await confirmOperation(`¿Confirmas que la orden #${order.daily_number} fue entregada?`))) return;
+      if (!(await confirmAction(`¿Confirmas que la orden #${order.daily_number} fue entregada?`))) return;
       try {
         await api<Order>(`/orders/${order.id}/status`, token, {
           method: "POST",
@@ -1022,7 +1015,7 @@ function KitchenBoard({ orders, token, onAction }: { orders: Order[]; token: str
     const next: OrderStatus = order.status === "kitchen_pending" ? "preparing" : order.status === "preparing" ? "prepared" : "ready";
     const label = next === "preparing" ? "iniciar la preparación" : next === "prepared" ? "marcar la orden como preparada" : order.type === "delivery" ? "enviarla a reparto" : "marcarla lista para recoger";
     try {
-      if (await confirmOperation(`¿Deseas ${label}?`)) await onAction(order, next);
+      if (await confirmAction(`¿Deseas ${label}?`)) await onAction(order, next);
     } finally {
       actionLocks.current.delete(order.id);
       setWorkingOrderIds((current) => current.filter((id) => id !== order.id));
@@ -1126,13 +1119,13 @@ function DeliveryBoard({ orders, token, onAction, onReload }: { orders: Order[];
       setPaymentError(`La orden #${order.daily_number} todavía tiene saldo pendiente. Registra el cobro antes de entregarla.`);
       return;
     }
-    if (await confirmOperation(next === "on_way" ? "¿Confirmas que el pedido va en camino?" : "¿Confirmas que el pedido fue entregado?")) {
+    if (await confirmAction(next === "on_way" ? "¿Confirmas que el pedido va en camino?" : "¿Confirmas que el pedido fue entregado?")) {
       await onAction(order, next);
     }
   }
   async function payment(order: Order) {
     const due = amountDue(order);
-    if (!mustCollect(order) || !(await confirmOperation(`¿Confirmas que recibiste $${due.toFixed(2)} en efectivo?`))) return;
+    if (!mustCollect(order) || !(await confirmAction(`¿Confirmas que recibiste $${due.toFixed(2)} en efectivo?`))) return;
     setPaymentError("");
     try {
       await api(`/delivery/orders/${order.id}/payment-received`, token, {
@@ -1209,7 +1202,7 @@ function AdministrationView({ profile, token }: { profile: any; token: string })
   useEffect(() => { reloadCash().catch((error) => setMessage((error as Error).message)); }, [token]);
   async function save() { setBusy(true); setMessage(""); try { await api("/business-profile", token, { method: "PUT", body: JSON.stringify({ name: name.trim(), phone: phone.trim() || null, address: address.trim() || null, receipt_footer: footer.trim() || null }) }); setMessage("Datos del negocio guardados."); } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); } }
   async function openCash() { setBusy(true); setMessage(""); try { await api("/cash-days/open", token, { method: "POST", body: JSON.stringify({ opening_amount: Number(opening) || 0 }) }); await reloadCash(); setMessage("Caja abierta."); } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); } }
-  async function closeCash() { if (!cash?.cash_day_id || !(await confirmOperation("¿Confirmas el cierre de caja?"))) return; setBusy(true); setMessage(""); try { await api(`/cash-days/${cash.cash_day_id}/close`, token, { method: "POST", body: JSON.stringify({ actual_amount: Number(actual) }) }); await reloadCash(); setMessage("Caja cerrada."); } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); } }
+  async function closeCash() { if (!cash?.cash_day_id || !(await confirmAction("¿Confirmas el cierre de caja?"))) return; setBusy(true); setMessage(""); try { await api(`/cash-days/${cash.cash_day_id}/close`, token, { method: "POST", body: JSON.stringify({ actual_amount: Number(actual) }) }); await reloadCash(); setMessage("Caja cerrada."); } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); } }
   return <View><View style={s.formCard}><Text style={s.sectionTitle}>Datos del negocio y notas</Text><TextInput style={s.input} placeholder="Nombre comercial" value={name} onChangeText={setName} /><TextInput style={s.input} placeholder="Teléfono" value={phone} onChangeText={setPhone} /><TextInput style={s.input} placeholder="Dirección" value={address} onChangeText={setAddress} /><TextInput style={s.input} placeholder="Mensaje de agradecimiento" value={footer} onChangeText={setFooter} /><Pressable style={[s.primary, (busy || !name.trim()) && s.disabled]} disabled={busy || !name.trim()} onPress={save}><Text style={s.primaryText}>Guardar datos</Text></Pressable></View><View style={s.formCard}><Text style={s.sectionTitle}>Caja diaria</Text>{cash && <View style={s.metrics}><Metric label="Ventas" value={`$${Number(cash.gross_sales ?? 0).toFixed(2)}`} /><Metric label="Efectivo esperado" value={`$${Number(cash.expected_cash ?? 0).toFixed(2)}`} /><Metric label="Compras desde caja" value={`$${Number(cash.cash_purchases ?? 0).toFixed(2)}`} /></View>}{!cash?.cash_day_id ? <><TextInput style={s.input} placeholder="Fondo inicial" value={opening} onChangeText={setOpening} keyboardType="decimal-pad" /><Pressable style={s.primary} onPress={openCash}><Text style={s.primaryText}>Abrir caja</Text></Pressable></> : cash.closed_at ? <Text style={s.paid}>Caja cerrada</Text> : <><TextInput style={s.input} placeholder="Efectivo real para cierre" value={actual} onChangeText={setActual} keyboardType="decimal-pad" /><Pressable style={s.smallButton} onPress={closeCash}><Text style={s.primaryText}>Cerrar caja</Text></Pressable></>}{!!message && <Text style={s.notice}>{message}</Text>}</View></View>;
 }
 function Reports({ token }: { token: string }) {
@@ -1531,7 +1524,7 @@ function Pos({ products, token }: { products: Product[]; token: string }) {
         const detail = stockWarningDescription(warnings);
         setPendingKitchenSend({ order, warnings, error: error.message });
         setMessage(`La orden #${order.daily_number} fue creada, pero aún no se envió a cocina por inventario insuficiente.`);
-        if (!allowStockShortage && await confirmOperation(`${detail}\n\n¿Deseas autorizar el faltante y enviar únicamente esta orden a cocina?`)) {
+        if (!allowStockShortage && await confirmAction(`${detail}\n\n¿Deseas autorizar el faltante y enviar únicamente esta orden a cocina?`)) {
           return sendCreatedOrderToKitchen(order, true);
         }
         return false;
@@ -1546,7 +1539,7 @@ function Pos({ products, token }: { products: Product[]; token: string }) {
     if (!pendingKitchenSend || submissionInFlight.current) return;
     submissionInFlight.current = true;
     const authorizeShortage = pendingKitchenSend.warnings.length > 0;
-    if (authorizeShortage && !(await confirmOperation(`${stockWarningDescription(pendingKitchenSend.warnings)}\n\n¿Autorizas el faltante y el envío a cocina?`))) {
+    if (authorizeShortage && !(await confirmAction(`${stockWarningDescription(pendingKitchenSend.warnings)}\n\n¿Autorizas el faltante y el envío a cocina?`))) {
       submissionInFlight.current = false;
       return;
     }
@@ -1571,7 +1564,7 @@ function Pos({ products, token }: { products: Product[]; token: string }) {
       return;
     }
     submissionInFlight.current = true;
-    if (status === "confirmed" && !(await confirmOperation(
+    if (status === "confirmed" && !(await confirmAction(
         scheduled
           ? `¿Confirmas el cobro de $${total.toFixed(2)} y el pedido programado?`
           : `¿Confirmas el cobro de $${total.toFixed(2)} y el envío a cocina?`,

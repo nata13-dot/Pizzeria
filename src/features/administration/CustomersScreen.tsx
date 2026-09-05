@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
+import { confirmAction } from "../../components/ConfirmationDialog";
 import { api } from "../../api";
 
 type Address = { id: number; label: string; address: string; references?: string | null; map_url?: string | null; delivery_zone?: string | null; notes?: string | null; is_default: boolean };
@@ -14,14 +15,6 @@ type LoyaltyRule = { id: number; name: string; type: string; threshold: string |
 async function callPhone(phone: string): Promise<void> {
   const normalized = phone.trim().replace(/[^\d+]/g, "");
   if (normalized) await Linking.openURL(`tel:${normalized}`);
-}
-
-function confirmAction(message: string): Promise<boolean> {
-  if (Platform.OS === "web") return Promise.resolve(globalThis.confirm(message));
-  return new Promise((resolve) => Alert.alert("Confirmar", message, [
-    { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
-    { text: "Aceptar", onPress: () => resolve(true) },
-  ], { cancelable: true, onDismiss: () => resolve(false) }));
 }
 
 export function CustomersScreen({ token, isAdministrator }: { token: string; isAdministrator: boolean }) {

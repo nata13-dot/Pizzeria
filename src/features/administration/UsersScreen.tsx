@@ -1,20 +1,13 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
+import { confirmAction } from "../../components/ConfirmationDialog";
 import { api } from "../../api";
 
 type Permission = { id: number; name: string; slug: string };
 type Role = { id: number; name: string; slug: string; description?: string | null; permissions: Permission[] };
 type User = { id: number; name: string; username?: string | null; email: string; active: boolean; role_id: number; role: Role };
 type UsersPage = { data: User[]; current_page: number; last_page: number };
-
-function confirmAction(message: string): Promise<boolean> {
-  if (Platform.OS === "web") return Promise.resolve(globalThis.confirm(message));
-  return new Promise((resolve) => Alert.alert("Confirmar", message, [
-    { text: "Cancelar", style: "cancel", onPress: () => resolve(false) },
-    { text: "Aceptar", onPress: () => resolve(true) },
-  ], { cancelable: true, onDismiss: () => resolve(false) }));
-}
 
 export function UsersScreen({ token, currentUserId }: { token: string; currentUserId: number }) {
   const [users, setUsers] = useState<User[]>([]);
