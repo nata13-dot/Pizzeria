@@ -88,8 +88,11 @@ export function SystemTheme() {
         const background = backgrounds[computed.backgroundColor];
         const foreground = foregrounds[computed.color];
         if (background) element.dataset.pizzeriaBg = background;
+        else delete element.dataset.pizzeriaBg;
         if (foreground) element.dataset.pizzeriaFg = foreground;
+        else delete element.dataset.pizzeriaFg;
         if (softBorders.has(computed.borderTopColor) || softBorders.has(computed.borderColor)) element.dataset.pizzeriaBorder = "soft";
+        else delete element.dataset.pizzeriaBorder;
       });
     };
     const apply = () => {
@@ -103,7 +106,12 @@ export function SystemTheme() {
     window.addEventListener(EVENT_NAME, apply);
     media.addEventListener?.("change", onSystemChange);
     const observer = new MutationObserver(() => apply());
-    observer.observe(document.getElementById("root") ?? document.body, { childList: true, subtree: true });
+    observer.observe(document.getElementById("root") ?? document.body, {
+      attributeFilter: ["class", "style"],
+      attributes: true,
+      childList: true,
+      subtree: true,
+    });
     apply();
     return () => { observer.disconnect(); window.removeEventListener(EVENT_NAME, apply); media.removeEventListener?.("change", onSystemChange); style.remove(); };
   }, []);

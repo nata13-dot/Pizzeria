@@ -81,7 +81,7 @@ function EditUser({ user, roles, token, currentUserId, onSaved, setMessage }: { 
 }
 
 function RoleChoices({ roles, selectedId, setSelectedId }: { roles: Role[]; selectedId: number | null; setSelectedId: (id: number) => void }) {
-  return <View style={styles.actions}>{roles.map((role) => <Pressable key={role.id} style={[styles.choice, selectedId === role.id && styles.choiceActive]} onPress={() => setSelectedId(role.id)}><Text>{role.name}</Text></Pressable>)}</View>;
+  return <View style={styles.actions}>{roles.map((role) => <Pressable accessibilityRole="radio" accessibilityState={{ checked: selectedId === role.id }} key={role.id} style={[styles.choice, selectedId === role.id && styles.choiceActive]} onPress={() => setSelectedId(role.id)}><Text>{role.name}</Text></Pressable>)}</View>;
 }
 
 function RolePermissions({ roles, permissions, token, onSaved, setMessage }: { roles: Role[]; permissions: Permission[]; token: string; onSaved: () => Promise<void>; setMessage: (message: string) => void }) {
@@ -94,7 +94,7 @@ function RolePermissions({ roles, permissions, token, onSaved, setMessage }: { r
     if (!roleId) return; setBusy(true); setMessage("");
     try { await api(`/roles/${roleId}`, token, { method: "PUT", body: JSON.stringify({ permission_ids: selectedIds }) }); setMessage("Permisos del rol actualizados. Los usuarios verán el cambio al renovar su sesión."); await onSaved(); } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
   }
-  return <View style={styles.card}><Text style={styles.title}>Permisos por rol</Text><Text style={styles.muted}>El administrador conserva acceso total. Configura aquí las capacidades operativas de los demás roles.</Text><RoleChoices roles={configurableRoles} selectedId={roleId} setSelectedId={setRoleId} /><View style={styles.permissionGrid}>{permissions.map((permission) => <Pressable key={permission.id} style={[styles.permission, selectedIds.includes(permission.id) && styles.permissionActive]} onPress={() => toggle(permission.id)}><Text style={styles.permissionName}>{permission.slug}</Text><Text style={styles.muted}>{permission.name}</Text></Pressable>)}</View><Pressable disabled={busy || !roleId} style={[styles.primary, busy && styles.disabled]} onPress={save}><Text style={styles.primaryText}>Guardar permisos</Text></Pressable></View>;
+  return <View style={styles.card}><Text style={styles.title}>Permisos por rol</Text><Text style={styles.muted}>El administrador conserva acceso total. Configura aquí las capacidades operativas de los demás roles.</Text><RoleChoices roles={configurableRoles} selectedId={roleId} setSelectedId={setRoleId} /><View style={styles.permissionGrid}>{permissions.map((permission) => { const checked = selectedIds.includes(permission.id); return <Pressable accessibilityRole="checkbox" accessibilityState={{ checked }} key={permission.id} style={[styles.permission, checked && styles.permissionActive]} onPress={() => toggle(permission.id)}><Text style={styles.permissionName}>{permission.name}</Text><Text style={styles.muted}>{permission.slug}</Text></Pressable>; })}</View><Pressable disabled={busy || !roleId} style={[styles.primary, busy && styles.disabled]} onPress={save}><Text style={styles.primaryText}>Guardar permisos</Text></Pressable></View>;
 }
 
 const styles = StyleSheet.create({
