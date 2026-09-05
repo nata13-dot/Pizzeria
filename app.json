@@ -26,6 +26,13 @@
       "expo-status-bar",
       "expo-secure-store",
       [
+        "expo-notifications",
+        {
+          "color": "#CF4B32",
+          "defaultChannel": "orders"
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Permite que Pizzería seleccione el logo del negocio.",

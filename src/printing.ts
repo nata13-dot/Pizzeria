@@ -28,11 +28,12 @@ function thermalHtml(html: string, paperWidth: ThermalPaperWidth): string {
     th:last-child, td:last-child { width: 25%; }
     .summary { width: 100% !important; }
     .business img { max-height: 9mm !important; max-width: 50% !important; }
-    .print-document { font-size: var(--receipt-font-size, ${paperWidth === 58 ? 8 : 9}px) !important; }
+    .document { font-size: ${paperWidth === 58 ? 10 : 11.25}px !important; }
+    .print-document { font-size: var(--receipt-font-scale, 80%) !important; }
     .print-document h1 { font-size: 1.7em !important; }
     .print-document h2 { font-size: 1.4em !important; }
     .print-document h3 { font-size: 1em !important; }
-    .customer-ticket { font-size: var(--receipt-font-size, ${paperWidth === 58 ? 8 : 9}px) !important; line-height: 1.12 !important; }
+    .customer-ticket { font-size: var(--receipt-font-scale, 80%) !important; line-height: 1.12 !important; }
     .print-button { display: none !important; }
   </style>`;
   return html.includes("</head>") ? html.replace("</head>", `${printStyles}</head>`) : `${printStyles}${html}`;

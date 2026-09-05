@@ -29,12 +29,13 @@ import { InventoryScreen } from "./src/features/operations/InventoryScreen";
 import { ProductionScreen } from "./src/features/operations/ProductionScreen";
 import { PurchasesScreen } from "./src/features/operations/PurchasesScreen";
 import { ordersChannel } from "./src/realtime";
-import { registerPush } from "./src/push";
+import { registerPush, showOrderNotification } from "./src/push";
 import { getConfiguredThermalPrinter, printThermalHtml, type ThermalPaperWidth } from "./src/printing";
 import { clearSession, readSession, saveSession } from "./src/session";
 import { SystemTheme, ThemeToggle } from "./src/SystemTheme";
 type Session = {
   token: string;
+  expires_at?: string;
   user: { id: number; name: string; branch_id: number; permissions: string[]; role: { name: string; slug: string } };
 };
 type Screen = "dashboard" | "pos" | "cash" | "orders" | "inventory" | "purchases" | "production" | "products" | "kitchen" | "delivery" | "customers" | "users" | "reports" | "settings";
@@ -98,6 +99,8 @@ type Order = {
   order_date?: string;
   created_at?: string;
   scheduled_at?: string | null;
+  contact_name?: string | null;
+  contact_phone?: string | null;
   customer?: { id: number; name: string; phone?: string | null } | null;
   delivery?: { recipient: string; phone: string; address: string; references?: string; map_url?: string; payment_received?: boolean } | null;
   payments?: { method: string; amount: string | number }[];
@@ -134,6 +137,18 @@ const screenIcons: Record<Screen, string> = {
 function hasPermission(user: Session["user"], permission: string): boolean {
   return user.permissions?.includes("*") || user.permissions?.includes(permission);
 }
+function orderNotificationFor(user: Session["user"], event: { status: string; type: string; daily_number: number }) {
+  if (event.status === "kitchen_pending" && hasPermission(user, "kitchen.use")) {
+    return { title: "Nuevo pedido para cocina", body: `Pedido #${event.daily_number} listo para preparar.`, screen: "kitchen" };
+  }
+  if (event.status === "ready" && event.type === "delivery" && hasPermission(user, "delivery.use")) {
+    return { title: "Pedido listo para repartir", body: `Pedido #${event.daily_number} está listo.`, screen: "delivery" };
+  }
+  if (event.status === "ready" && event.type !== "delivery" && hasPermission(user, "pos.use")) {
+    return { title: "Pedido listo para entregar", body: `Pedido #${event.daily_number} está listo.`, screen: "orders" };
+  }
+  return null;
+}
 function screensForUser(user: Session["user"]): Screen[] {
   if (user.role.slug === "administrador" || hasPermission(user, "*")) return [...allScreens];
   const screens: Screen[] = [];
@@ -169,6 +184,10 @@ function PizzeriaApp() {
     let active = true;
     readSession<Session>().then(async (stored) => {
       if (!stored) return;
+      if (stored.expires_at && Date.parse(stored.expires_at) <= Date.now()) {
+        await clearSession();
+        return;
+      }
       const user = await api<Session["user"]>("/me", stored.token);
       if (active) {
         const restored = { token: stored.token, user };
@@ -207,6 +226,18 @@ function PizzeriaApp() {
     return () => { void listener.then((handle) => handle.remove()); };
   }, []);
   useEffect(()=>{if(session)registerPush(session.token).catch(()=>{})},[session?.token]);
+  useEffect(() => {
+    if (!session) return;
+    return ordersChannel(session.token, session.user.branch_id, (event) => {
+      const notification = orderNotificationFor(session.user, event);
+      if (notification && Platform.OS === "web") {
+        showOrderNotification(notification.title, notification.body, {
+          order_id: event.id,
+          screen: notification.screen,
+        }).catch(() => {});
+      }
+    });
+  }, [session?.token, session?.user.branch_id]);
   if (restoringSession) return <SafeAreaView style={s.loginPage}><ActivityIndicator size="large" color="#cf4b32" /><Text style={s.muted}>Restaurando sesión...</Text></SafeAreaView>;
   if (!session) return <Login onLogin={(next, remember)=>{const screens=screensForUser(next.user);const firstScreen=screens[0] ?? "dashboard";screenHistory.current=[];screenRef.current=firstScreen;setSession(next);setScreen(firstScreen);if(remember)saveSession(next).catch(()=>{});else clearSession().catch(()=>{})}} />;
   const visibleScreens = screensForUser(session.user);
@@ -852,7 +883,7 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
     const scheduledIsDue = Number.isFinite(scheduledAt) && scheduledAt <= Date.now();
     const canSend = order.status === "confirmed" && (!order.scheduled_at || scheduledIsDue || Boolean(sendFailure?.warnings.length));
     const canDeliver = order.status === "ready" && order.type !== "delivery";
-    const contactPhone = order.delivery?.phone || order.customer?.phone;
+    const contactPhone = order.delivery?.phone || order.contact_phone || order.customer?.phone;
     const advancedCancellation = ["preparing", "prepared", "ready", "on_way"].includes(order.status);
     const canCancel = !["delivered", "cancelled"].includes(order.status) && (!advancedCancellation || isAdministrator);
     return <View style={s.order} key={order.id}>
@@ -862,6 +893,7 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
         <Text style={s.orderTotal}>${Number(order.total).toFixed(2)}</Text>
       </View>
       {order.customer && <Text style={s.muted}>Cliente: {order.customer.name}{order.customer.phone ? ` · ${order.customer.phone}` : ""}</Text>}
+      {!order.customer && order.contact_name && <Text style={s.muted}>Cliente: {order.contact_name}{order.contact_phone ? ` · ${order.contact_phone}` : ""}</Text>}
       {order.status === "confirmed" && order.scheduled_at && <Text style={s.scheduled}>Se enviará automáticamente a cocina en su ventana de preparación.</Text>}
       {sendFailure && <View style={s.warningBox}>
         <Text style={s.label}>{sendFailure.warnings.length ? "Faltante de inventario" : "Envío a cocina pendiente"}</Text>

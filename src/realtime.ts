@@ -6,19 +6,30 @@ import { API_URL } from "./api";
 // declarations and React Native bundle still describe a default export.
 const PusherClient = (PusherModule as unknown as { Pusher?: typeof PusherModule }).Pusher ?? PusherModule;
 
-export function ordersChannel(token: string, branchId: number, onChange: () => void): () => void {
+export type OrderStatusEvent = {
+  id: number;
+  daily_number: number;
+  status: string;
+  type: string;
+  scheduled_at?: string | null;
+};
+
+export function ordersChannel(token: string, branchId: number, onChange: (event: OrderStatusEvent) => void): () => void {
   try {
-    const host = process.env.EXPO_PUBLIC_REVERB_HOST ?? "127.0.0.1";
-    const port = Number(process.env.EXPO_PUBLIC_REVERB_PORT ?? 8080);
+    const host = process.env.EXPO_PUBLIC_REVERB_HOST;
+    const key = process.env.EXPO_PUBLIC_REVERB_KEY;
+    const port = Number(process.env.EXPO_PUBLIC_REVERB_PORT ?? 443);
+    if (!host || !key || !Number.isInteger(port) || port < 1 || port > 65535 || /(^|\.)localhost$/i.test(host) || host === "127.0.0.1") {
+      throw new Error("Realtime no está configurado con un servidor seguro.");
+    }
     const echo = new Echo({
       broadcaster: "reverb",
       Pusher: PusherClient,
-      key: process.env.EXPO_PUBLIC_REVERB_KEY ?? "pizzeria-local-key",
+      key,
       wsHost: host,
-      wsPort: port,
       wssPort: port,
-      forceTLS: false,
-      enabledTransports: ["ws", "wss"],
+      forceTLS: true,
+      enabledTransports: ["wss"],
       authEndpoint: `${API_URL}/broadcasting/auth`,
       auth: { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
     });
