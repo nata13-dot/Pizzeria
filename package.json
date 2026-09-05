@@ -6,6 +6,7 @@
     "@capacitor/android": "^8.5.0",
     "@capacitor/app": "^8.1.1",
     "@capacitor/core": "^8.5.0",
+    "@capacitor/haptics": "^8.0.2",
     "@capacitor/local-notifications": "^8.3.1",
     "@capacitor/push-notifications": "^8.1.2",
     "@expo/metro-runtime": "~57.0.13",
@@ -40,7 +41,8 @@
     "typecheck": "tsc --noEmit",
     "build:web": "expo export --platform web",
     "start:production": "serve -s dist -l tcp://0.0.0.0:$PORT",
-    "cap:sync": "npm run build:web && cap sync android",
+    "cap:sync": "npm run build:web && cap sync android && npm run cap:sounds",
+    "cap:sounds": "node scripts/sync-android-sounds.mjs",
     "cap:assets": "capacitor-assets generate --android --assetPath capacitor-assets --iconBackgroundColor '#050505' --iconBackgroundColorDark '#050505'",
     "cap:apk": "npm run cap:sync && npm run cap:assets && cd android && ./gradlew assembleDebug"
   },

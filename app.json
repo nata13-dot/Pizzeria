@@ -29,7 +29,8 @@
         "expo-notifications",
         {
           "color": "#CF4B32",
-          "defaultChannel": "orders"
+          "defaultChannel": "orders_kitchen_bell",
+          "sounds": ["./assets/campanilla.wav"]
         }
       ],
       [

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
 import { api, ApiError, type ApiStockWarning } from "../../api";
+import { cartAddedFeedback } from "../../haptics";
 import { getConfiguredThermalPrinter, isNativeAndroid, printThermalHtml, printThermalHtmlWithAndroid, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
 
 type Flavor = { id: number; name: string };
@@ -80,12 +81,14 @@ export function PosScreen({ token, isAdministrator, canOverrideStock }: { token:
     setAddressId(selected?.id ?? null); setRecipient(customer?.name ?? ""); setPhone(customer?.phone ?? ""); setAddress(selected?.address ?? ""); setReferences(selected?.references ?? ""); setMapUrl(selected?.map_url ?? ""); setZone(selected?.delivery_zone ?? "");
   }
   function addProduct(product: Product, variant: Variant, flavorIds: number[], modifierIds: number[], itemNotes: string) {
+    cartAddedFeedback();
     const flavors = product.flavors.filter((flavor) => flavorIds.includes(flavor.id)); const rules = variant.modifier_rules.filter((rule) => modifierIds.includes(rule.modifier_id));
     const flavorExtra = flavorIds.length > 1 ? product.type === "pizza" ? Number(settings.half_and_half_extra) : product.type === "wings" ? Number(settings.additional_wing_flavor_extra) * (flavorIds.length - 1) : 0 : 0;
     const modifierExtra = rules.reduce((sum, rule) => sum + Number(rule.price_override ?? rule.modifier.price), 0); const key = `product-${variant.id}-${[...flavorIds].sort().join(".")}-${[...modifierIds].sort().join(".")}-${itemNotes}`;
     setCart((current) => { const found = current.find((line) => line.key === key); return found ? current.map((line) => line.key === key ? { ...line, quantity: line.quantity + 1 } : line) : [...current, { key, kind: "product", variantId: variant.id, name: `${product.name} · ${variant.name}`, unitPrice: Number(variant.price) + flavorExtra + modifierExtra, quantity: 1, flavorIds, flavorNames: flavors.map((flavor) => flavor.name), modifierIds, modifierNames: rules.map((rule) => rule.modifier.name), notes: itemNotes.trim() }]; });
   }
   function addCombo(combo: Combo, components: ComboComponent[], summary: string[]) {
+    cartAddedFeedback();
     const extras = components.reduce((totalExtra, selection) => {
       const comboItem = combo.items.find((item) => item.id === selection.combo_item_id);
       const product = products.find((entry) => entry.variants.some((variant) => variant.id === comboItem?.product_variant_id));

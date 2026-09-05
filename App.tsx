@@ -1,5 +1,6 @@
 import { StatusBar } from "expo-status-bar";
 import { App as CapacitorApp } from "@capacitor/app";
+import { Capacitor } from "@capacitor/core";
 import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -33,6 +34,7 @@ import { registerPush, showOrderNotification } from "./src/push";
 import { getConfiguredThermalPrinter, printThermalHtml, type ThermalPaperWidth } from "./src/printing";
 import { clearSession, readSession, saveSession } from "./src/session";
 import { setSystemFontSize, SystemTheme, ThemeToggle } from "./src/SystemTheme";
+import { cartAddedFeedback } from "./src/haptics";
 type Session = {
   token: string;
   expires_at?: string;
@@ -228,15 +230,15 @@ function PizzeriaApp() {
   useEffect(()=>{if(session)registerPush(session.token).catch(()=>{})},[session?.token]);
   useEffect(() => {
     if (!session) return;
-    api<{ receipt_font_size: "small" | "medium" | "large" }>("/preferences", session.token)
-      .then((preferences) => setSystemFontSize(preferences.receipt_font_size))
+    api<{ system_font_size: "small" | "medium" | "large" }>("/preferences", session.token)
+      .then((preferences) => setSystemFontSize(preferences.system_font_size))
       .catch(() => {});
   }, [session?.token]);
   useEffect(() => {
     if (!session) return;
     return ordersChannel(session.token, session.user.branch_id, (event) => {
       const notification = orderNotificationFor(session.user, event);
-      if (notification && Platform.OS === "web") {
+      if (notification && Platform.OS === "web" && !Capacitor.isNativePlatform()) {
         showOrderNotification(notification.title, notification.body, {
           order_id: event.id,
           screen: notification.screen,
@@ -244,6 +246,13 @@ function PizzeriaApp() {
       }
     });
   }, [session?.token, session?.user.branch_id]);
+  useEffect(() => {
+    if (!session?.expires_at) return;
+    const remaining = Date.parse(session.expires_at) - Date.now();
+    if (remaining <= 0) { void clearSession(); setSession(null); return; }
+    const timer = setTimeout(() => { void clearSession(); setSession(null); }, remaining);
+    return () => clearTimeout(timer);
+  }, [session?.expires_at]);
   if (restoringSession) return <SafeAreaView style={s.loginPage}><ActivityIndicator size="large" color="#cf4b32" /><Text style={s.muted}>Restaurando sesión...</Text></SafeAreaView>;
   if (!session) return <Login onLogin={(next, remember)=>{const screens=screensForUser(next.user);const firstScreen=screens[0] ?? "dashboard";screenHistory.current=[];screenRef.current=firstScreen;setSession(next);setScreen(firstScreen);if(remember)saveSession(next).catch(()=>{});else clearSession().catch(()=>{})}} />;
   const visibleScreens = screensForUser(session.user);
@@ -1483,6 +1492,7 @@ function Pos({ products, token }: { products: Product[]; token: string }) {
     setIdempotencyKey(createOrderIdempotencyKey());
   }
   function add(p: Product, v: Product["variants"][0], flavors: Product["flavors"]) {
+    cartAddedFeedback();
     const flavorIds = flavors.map((x) => x.id).sort((a, b) => a - b);
     setCart((c) => {
       const found = c.find(

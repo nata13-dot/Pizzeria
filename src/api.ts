@@ -84,15 +84,26 @@ export async function api<T>(
   token?: string,
   options: RequestInit = {},
 ): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
-    ...options,
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...options.headers,
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20_000);
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, {
+      ...options,
+      signal: options.signal ?? controller.signal,
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("La solicitud tardó demasiado. Revisa tu conexión e inténtalo de nuevo.");
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
   const rawData: unknown = await response.json().catch(() => ({}));
 
   if (!response.ok) {

@@ -108,7 +108,7 @@ export function CashScreen({ token }: { token: string }) {
   }
 
   async function addMovement() {
-    if (!day?.id || Number(movementAmount) <= 0 || !movementCategory.trim()) return;
+    if (!day?.id || Number(movementAmount) <= 0 || !movementCategory.trim() || (movementType === "expense" && !movementDescription.trim())) return;
     setBusy(true);
     setMessage("");
     try {
@@ -184,14 +184,15 @@ export function CashScreen({ token }: { token: string }) {
 
     {day?.status === "open" && <>
       <View style={styles.card}>
-        <Text style={styles.title}>Entrada o egreso manual</Text>
+        <Text style={styles.title}>{movementType === "expense" ? "Registrar egreso de caja" : "Registrar entrada de caja"}</Text>
+        <Text style={styles.muted}>Controla el dinero que {movementType === "expense" ? "sale para gastos" : "entra fuera de una venta"}. Quedará registrado con el usuario y la hora.</Text>
         <View style={styles.actions}>
           {(["income", "expense"] as const).map((type) => <Pressable key={type} onPress={() => setMovementType(type)} style={[styles.choice, movementType === type && styles.choiceActive]}><Text>{type === "income" ? "Entrada" : "Egreso"}</Text></Pressable>)}
         </View>
         <TextInput style={styles.input} value={movementAmount} onChangeText={setMovementAmount} keyboardType="decimal-pad" placeholder="Monto" />
-        <TextInput style={styles.input} value={movementCategory} onChangeText={setMovementCategory} placeholder="Categoría o motivo" />
-        <TextInput style={styles.input} value={movementDescription} onChangeText={setMovementDescription} placeholder="Descripción opcional" />
-        <Pressable disabled={busy || Number(movementAmount) <= 0 || !movementCategory.trim()} style={[styles.primary, (busy || Number(movementAmount) <= 0 || !movementCategory.trim()) && styles.disabled]} onPress={addMovement}><Text style={styles.primaryText}>Registrar movimiento</Text></Pressable>
+        <TextInput style={styles.input} value={movementCategory} onChangeText={setMovementCategory} placeholder={movementType === "expense" ? "Concepto del egreso (ej. gas, transporte)" : "Concepto de la entrada"} />
+        <TextInput style={styles.input} value={movementDescription} onChangeText={setMovementDescription} placeholder={movementType === "expense" ? "Motivo del gasto" : "Descripción opcional"} />
+        <Pressable disabled={busy || Number(movementAmount) <= 0 || !movementCategory.trim() || (movementType === "expense" && !movementDescription.trim())} style={[styles.primary, (busy || Number(movementAmount) <= 0 || !movementCategory.trim() || (movementType === "expense" && !movementDescription.trim())) && styles.disabled]} onPress={addMovement}><Text style={styles.primaryText}>{movementType === "expense" ? "Registrar egreso" : "Registrar entrada"}</Text></Pressable>
       </View>
       <View style={styles.card}>
         <Text style={styles.title}>Cerrar caja</Text>

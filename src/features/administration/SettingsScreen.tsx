@@ -4,7 +4,7 @@ import { FloatingTextInput as TextInput } from "../../components/FloatingTextInp
 import { api } from "../../api";
 import { getConfiguredThermalPrinter, isNativeAndroid, saveThermalPaperWidth, selectThermalPrinter, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
 import { LogoPicker } from "./LogoPicker";
-import { setSystemFontSize } from "../../SystemTheme";
+import { setSystemFontSize, type SystemFontSize } from "../../SystemTheme";
 
 type SocialLink = { name: string; value: string };
 type BusinessProfile = { name: string; phone?: string | null; address?: string | null; tax_id?: string | null; receipt_footer?: string | null; primary_color?: string | null; secondary_color?: string | null; social_links?: SocialLink[] | null; show_business_details?: boolean; logo_path?: string | null };
@@ -12,7 +12,7 @@ type DeliveryZone = { name: string; kind?: "colony" | "auxiliary"; fee: number; 
 type PaymentMethod = { key: "cash" | "transfer"; label: string; active: boolean };
 type Settings = { pending_payment_minutes: number; kitchen_lead_minutes: number; delivery_lead_minutes: number; half_and_half_extra: number; additional_wing_flavor_extra: number; max_wing_flavors: number; delivery_zones: DeliveryZone[]; payment_methods: PaymentMethod[]; show_kitchen_prices: boolean; loyalty_enabled: boolean; loyalty_point_value: number };
 type ReceiptFontSize = "small" | "medium" | "large";
-type Preferences = { receipt_font_size: ReceiptFontSize };
+type Preferences = { system_font_size: SystemFontSize; receipt_font_size: ReceiptFontSize };
 
 export function SettingsScreen({ token, isAdministrator }: { token: string; isAdministrator: boolean }) {
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
@@ -31,7 +31,7 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
     try {
       const nextPreferences = await api<Preferences>("/preferences", token);
       setPreferences(nextPreferences);
-      setSystemFontSize(nextPreferences.receipt_font_size);
+      setSystemFontSize(nextPreferences.system_font_size);
       if (isAdministrator) {
         const [nextProfile, nextSettings] = await Promise.all([
           api<BusinessProfile>("/business-profile", token), api<Settings>("/settings", token),
@@ -56,13 +56,13 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
     catch (error) { setPrinterMessage((error as Error).message); }
     finally { setPrinterBusy(false); }
   }
-  async function changeFontSize(receipt_font_size: ReceiptFontSize) {
+  async function changeFontSize(field: keyof Preferences, size: ReceiptFontSize) {
     setPrinterBusy(true); setPrinterMessage("");
     try {
-      const saved = await api<Preferences>("/preferences", token, { method: "PUT", body: JSON.stringify({ receipt_font_size }) });
+      const saved = await api<Preferences>("/preferences", token, { method: "PUT", body: JSON.stringify({ [field]: size }) });
       setPreferences(saved);
-      setSystemFontSize(saved.receipt_font_size);
-      setPrinterMessage(`Tamaño de letra general guardado: ${fontSizeLabels[receipt_font_size]}.`);
+      if (field === "system_font_size") setSystemFontSize(saved.system_font_size);
+      setPrinterMessage(`${field === "system_font_size" ? "Tamaño del sistema" : "Tamaño del ticket"} guardado: ${fontSizeLabels[size]}.`);
     } catch (error) { setPrinterMessage((error as Error).message); }
     finally { setPrinterBusy(false); }
   }
@@ -89,10 +89,12 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
   return <View style={styles.container}>
     {!!message && <Text style={styles.notice}>{message}</Text>}
     <View style={styles.card}>
+      <Text style={styles.title}>Tamaño de fuente</Text>
+      <Text style={styles.muted}>Estas preferencias pertenecen a tu perfil. Elige cada tamaño por separado.</Text>
+      <FontSizeSlider label="Fuente del sistema" value={preferences.system_font_size} disabled={printerBusy} onChange={(size) => changeFontSize("system_font_size", size)} preview="system" />
+      <View style={styles.divider} />
+      <FontSizeSlider label="Fuente del ticket" value={preferences.receipt_font_size} disabled={printerBusy} onChange={(size) => changeFontSize("receipt_font_size", size)} preview="ticket" />
       <Text style={styles.title}>Impresora térmica</Text>
-      <Text style={styles.muted}>Esta preferencia pertenece a tu perfil y escala toda la interfaz y los tickets que imprimas.</Text>
-      <Text style={styles.label}>Tamaño de letra de todo el sistema</Text>
-      <View style={styles.fontChoices}>{(["small", "medium", "large"] as ReceiptFontSize[]).map((size) => <Pressable disabled={printerBusy} key={size} style={[styles.fontChoice, preferences.receipt_font_size === size && styles.fontChoiceActive]} onPress={() => changeFontSize(size)}><Text style={[styles.fontChoiceText, size === "small" ? styles.fontPreview_small : size === "medium" ? styles.fontPreview_medium : styles.fontPreview_large]}>{fontSizeLabels[size]}</Text><Text style={styles.fontHint}>{size === "small" ? "Más compacto" : size === "medium" ? "Equilibrado" : "Más legible"}</Text></Pressable>)}</View>
       {isNativeAndroid() ? <>
         <View style={styles.printerStatus}><Text style={styles.subtitle}>{printer?.name ?? "Sin impresora configurada"}</Text><Text style={styles.muted}>{printer ? `${printer.type === "tcp" ? "Wi-Fi / TCP" : "Bluetooth"}${printer.address ? ` · ${printer.address}` : ""}` : "Vincula una impresora Bluetooth en Android o registra su dirección IP."}</Text></View>
         <Text style={styles.label}>Ancho del papel</Text>
@@ -149,11 +151,27 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
 }
 
 const fontSizeLabels: Record<ReceiptFontSize, string> = { small: "Pequeña", medium: "Mediana", large: "Grande" };
+const fontSizePixels: Record<ReceiptFontSize, number> = { small: 12, medium: 15, large: 18 };
+
+function FontSizeSlider({ label, value, disabled, onChange, preview }: { label: string; value: ReceiptFontSize; disabled: boolean; onChange: (size: ReceiptFontSize) => void; preview: "system" | "ticket" }) {
+  const sizes: ReceiptFontSize[] = ["small", "medium", "large"];
+  const selectedIndex = sizes.indexOf(value);
+  const previewSize = fontSizePixels[value];
+  return <View style={styles.fontControl}>
+    <View style={styles.fontControlHeading}><Text style={styles.label}>{label}</Text><Text style={styles.fontValue}>{fontSizeLabels[value]}</Text></View>
+    <View accessibilityRole="adjustable" accessibilityLabel={label} accessibilityValue={{ min: 1, max: 3, now: selectedIndex + 1, text: fontSizeLabels[value] }} style={styles.slider}>
+      <View style={styles.sliderRail} /><View style={[styles.sliderProgress, { width: `${selectedIndex * 50}%` }]} />
+      {sizes.map((size, index) => <Pressable accessibilityRole="button" accessibilityLabel={`${label}: ${fontSizeLabels[size]}`} disabled={disabled} hitSlop={10} key={size} onPress={() => onChange(size)} style={[styles.sliderStop, { left: `${index * 50}%` }, index <= selectedIndex && styles.sliderStopActive, size === value && styles.sliderThumb]} />)}
+    </View>
+    <View style={styles.sliderLabels}>{sizes.map((size) => <Text key={size} style={[styles.sliderLabel, size === value && styles.sliderLabelActive]}>{fontSizeLabels[size]}</Text>)}</View>
+    {preview === "system" ? <View style={styles.systemPreview}><View style={styles.previewIcon}><Text style={{ fontSize: previewSize }}>Aa</Text></View><View style={styles.previewCopy}><Text style={[styles.previewTitle, { fontSize: previewSize + 2 }]}>Vista del sistema</Text><Text style={[styles.previewText, { fontSize: previewSize }]}>Así se verán menús, botones y pedidos.</Text></View></View> : <View style={styles.ticketPreview}><View style={styles.ticketNotch} /><Text style={[styles.ticketBrand, { fontSize: previewSize + 2 }]}>PIZZERÍA</Text><Text style={[styles.ticketText, { fontSize: previewSize }]}>1  Pizza grande</Text><View style={styles.ticketRule} /><Text style={[styles.ticketTotal, { fontSize: previewSize + 1 }]}>TOTAL   $199.00</Text><Text style={[styles.ticketThanks, { fontSize: Math.max(10, previewSize - 1) }]}>¡Gracias por tu compra!</Text></View>}
+  </View>;
+}
 
 function NumberField({ label, value, onChange }: { label: string; value: number; onChange: (value: string) => void }) {
   return <View style={styles.numberField}><Text style={styles.label}>{label}</Text><TextInput style={styles.input} value={String(value)} onChangeText={onChange} keyboardType="decimal-pad" /></View>;
 }
 
 const styles = StyleSheet.create({
-  container: { gap: 14 }, card: { backgroundColor: "#fffdfa", borderRadius: 16, gap: 12, padding: 18 }, loader: { margin: 40 }, title: { color: "#29231f", fontSize: 18, fontWeight: "900" }, subtitle: { color: "#29231f", fontWeight: "900", marginTop: 6 }, muted: { color: "#796b61" }, label: { color: "#29231f", fontWeight: "700" }, notice: { backgroundColor: "#fff1cc", borderRadius: 10, color: "#5f4918", padding: 12 }, input: { backgroundColor: "white", borderColor: "#ddd1c5", borderRadius: 11, borderWidth: 1, minHeight: 50, paddingHorizontal: 14 }, multiline: { minHeight: 90, paddingVertical: 12, textAlignVertical: "top" }, inline: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 10 }, flex: { flex: 1, minWidth: 160 }, numberField: { flex: 1, gap: 6, minWidth: 190 }, fixedLabel: { fontWeight: "800", minWidth: 110 }, choice: { backgroundColor: "#eee4da", borderRadius: 9, padding: 11 }, choiceActive: { backgroundColor: "#f3b19f" }, primary: { alignItems: "center", backgroundColor: "#cf4b32", borderRadius: 11, justifyContent: "center", minHeight: 50, padding: 12 }, primaryText: { color: "white", fontWeight: "800" }, outlineButton: { alignSelf: "flex-start", borderColor: "#cf4b32", borderRadius: 10, borderWidth: 1, padding: 11 }, outlineText: { color: "#cf4b32", fontWeight: "800" }, dangerButton: { borderColor: "#a82e20", borderRadius: 10, borderWidth: 1, padding: 10 }, dangerText: { color: "#a82e20", fontWeight: "800" }, disabled: { opacity: 0.45 }, zoneCard: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 13, borderWidth: 1, gap: 10, padding: 12 }, printerStatus: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 12, borderWidth: 1, gap: 3, padding: 13 }, fontChoices: { flexDirection: "row", flexWrap: "wrap", gap: 8 }, fontChoice: { backgroundColor: "#f8f3ed", borderColor: "#e5d8cb", borderRadius: 11, borderWidth: 1, flex: 1, minWidth: 100, padding: 11 }, fontChoiceActive: { backgroundColor: "#fff0ec", borderColor: "#cf4b32", borderWidth: 2 }, fontChoiceText: { color: "#29231f", fontWeight: "900" }, fontHint: { color: "#796b61", fontSize: 10, marginTop: 3 }, fontPreview_small: { fontSize: 12 }, fontPreview_medium: { fontSize: 15 }, fontPreview_large: { fontSize: 18 },
+  container: { gap: 14 }, card: { backgroundColor: "#fffdfa", borderRadius: 16, gap: 12, padding: 18 }, loader: { margin: 40 }, title: { color: "#29231f", fontSize: 18, fontWeight: "900" }, subtitle: { color: "#29231f", fontWeight: "900", marginTop: 6 }, muted: { color: "#796b61" }, label: { color: "#29231f", fontWeight: "700" }, notice: { backgroundColor: "#fff1cc", borderRadius: 10, color: "#5f4918", padding: 12 }, input: { backgroundColor: "white", borderColor: "#ddd1c5", borderRadius: 11, borderWidth: 1, minHeight: 50, paddingHorizontal: 14 }, multiline: { minHeight: 90, paddingVertical: 12, textAlignVertical: "top" }, inline: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 10 }, flex: { flex: 1, minWidth: 160 }, numberField: { flex: 1, gap: 6, minWidth: 190 }, fixedLabel: { fontWeight: "800", minWidth: 110 }, choice: { backgroundColor: "#eee4da", borderRadius: 9, padding: 11 }, choiceActive: { backgroundColor: "#f3b19f" }, primary: { alignItems: "center", backgroundColor: "#cf4b32", borderRadius: 11, justifyContent: "center", minHeight: 50, padding: 12 }, primaryText: { color: "white", fontWeight: "800" }, outlineButton: { alignSelf: "flex-start", borderColor: "#cf4b32", borderRadius: 10, borderWidth: 1, padding: 11 }, outlineText: { color: "#cf4b32", fontWeight: "800" }, dangerButton: { borderColor: "#a82e20", borderRadius: 10, borderWidth: 1, padding: 10 }, dangerText: { color: "#a82e20", fontWeight: "800" }, disabled: { opacity: 0.45 }, zoneCard: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 13, borderWidth: 1, gap: 10, padding: 12 }, printerStatus: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 12, borderWidth: 1, gap: 3, padding: 13 }, divider: { backgroundColor: "#eadfd4", height: 1, marginVertical: 3 }, fontControl: { gap: 10 }, fontControlHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" }, fontValue: { backgroundColor: "#fff0ec", borderRadius: 12, color: "#a63c29", fontSize: 12, fontWeight: "900", overflow: "hidden", paddingHorizontal: 10, paddingVertical: 5 }, slider: { height: 30, justifyContent: "center", marginHorizontal: 9, position: "relative" }, sliderRail: { backgroundColor: "#dfd7d0", borderRadius: 3, height: 6, left: 0, position: "absolute", right: 0 }, sliderProgress: { backgroundColor: "#cf4b32", borderRadius: 3, height: 6, left: 0, position: "absolute" }, sliderStop: { backgroundColor: "#dfd7d0", borderColor: "#fffdfa", borderRadius: 8, borderWidth: 3, height: 16, marginLeft: -8, position: "absolute", width: 16 }, sliderStopActive: { backgroundColor: "#cf4b32" }, sliderThumb: { borderColor: "#cf4b32", borderRadius: 12, borderWidth: 3, height: 24, marginLeft: -12, width: 24 }, sliderLabels: { flexDirection: "row", justifyContent: "space-between" }, sliderLabel: { color: "#8a817a", fontSize: 11 }, sliderLabelActive: { color: "#a63c29", fontWeight: "900" }, systemPreview: { alignItems: "center", backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 13, borderWidth: 1, flexDirection: "row", gap: 12, minHeight: 88, padding: 14 }, previewIcon: { alignItems: "center", backgroundColor: "#cf4b32", borderRadius: 12, height: 48, justifyContent: "center", width: 48 }, previewCopy: { flex: 1, gap: 4 }, previewTitle: { color: "#29231f", fontWeight: "900" }, previewText: { color: "#796b61" }, ticketPreview: { alignSelf: "center", backgroundColor: "white", borderColor: "#d8d0c9", borderRadius: 3, borderWidth: 1, gap: 6, maxWidth: 300, padding: 16, width: "82%" }, ticketNotch: { alignSelf: "center", backgroundColor: "#eee4da", borderRadius: 3, height: 6, marginBottom: 3, width: 46 }, ticketBrand: { color: "#29231f", fontWeight: "900", textAlign: "center" }, ticketText: { color: "#29231f", fontFamily: "monospace" }, ticketRule: { borderStyle: "dashed", borderTopColor: "#796b61", borderTopWidth: 1 }, ticketTotal: { color: "#29231f", fontFamily: "monospace", fontWeight: "900", textAlign: "right" }, ticketThanks: { color: "#796b61", textAlign: "center" },
 });
