@@ -40,10 +40,10 @@ export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar
 }
 
 const styles = StyleSheet.create({
-  dropZone: { alignItems: "center", backgroundColor: "#f8f9fa", borderColor: "#cfd4da", borderRadius: 14, borderStyle: "dashed", borderWidth: 2, gap: 8, justifyContent: "center", minHeight: 180, padding: 18 },
+  dropZone: { alignItems: "center", backgroundColor: "#f8f9fa", borderColor: "#cfd4da", borderRadius: 14, borderStyle: "dashed", borderWidth: 2, gap: 5, justifyContent: "center", minHeight: 112, padding: 10 },
   help: { color: "#747b85", fontSize: 13 },
-  icon: { color: "#747b85", fontSize: 30 },
-  placeholder: { alignItems: "center", height: 72, justifyContent: "center" },
-  preview: { height: 105, width: "80%" },
+  icon: { color: "#747b85", fontSize: 22 },
+  placeholder: { alignItems: "center", height: 30, justifyContent: "center" },
+  preview: { height: 58, width: "80%" },
   title: { color: "#30353c", fontWeight: "900" },
 });

@@ -53,11 +53,11 @@ export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar
       cursor: "pointer",
       display: "flex",
       flexDirection: "column",
-      gap: 8,
+      gap: 5,
       justifyContent: "center",
-      minHeight: 180,
+      minHeight: 112,
       overflow: "hidden",
-      padding: 18,
+      padding: 10,
       position: "relative",
       textAlign: "center",
     }}
@@ -69,7 +69,7 @@ export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar
       style={{ cursor: "pointer", inset: 0, opacity: 0, position: "absolute", width: "100%" }}
       type="file"
     />
-    {value ? <img alt="Vista previa de la imagen" src={value} style={{ maxHeight: 105, maxWidth: "80%", objectFit: "contain" }} /> : <span style={{ fontSize: 30 }}>▧</span>}
+    {value ? <img alt="Vista previa de la imagen" src={value} style={{ maxHeight: 58, maxWidth: "80%", objectFit: "contain" }} /> : <span style={{ fontSize: 22 }}>▧</span>}
     <strong>{value ? changeLabel : emptyLabel}</strong>
     <span style={{ color: "#747b85", fontSize: 13 }}>PNG o JPEG · máximo {maximumBytes / 1024 / 1024} MB</span>
   </div>;
