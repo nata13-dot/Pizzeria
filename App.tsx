@@ -32,7 +32,7 @@ import { ordersChannel } from "./src/realtime";
 import { registerPush, showOrderNotification } from "./src/push";
 import { getConfiguredThermalPrinter, printThermalHtml, type ThermalPaperWidth } from "./src/printing";
 import { clearSession, readSession, saveSession } from "./src/session";
-import { SystemTheme, ThemeToggle } from "./src/SystemTheme";
+import { setSystemFontSize, SystemTheme, ThemeToggle } from "./src/SystemTheme";
 type Session = {
   token: string;
   expires_at?: string;
@@ -226,6 +226,12 @@ function PizzeriaApp() {
     return () => { void listener.then((handle) => handle.remove()); };
   }, []);
   useEffect(()=>{if(session)registerPush(session.token).catch(()=>{})},[session?.token]);
+  useEffect(() => {
+    if (!session) return;
+    api<{ receipt_font_size: "small" | "medium" | "large" }>("/preferences", session.token)
+      .then((preferences) => setSystemFontSize(preferences.receipt_font_size))
+      .catch(() => {});
+  }, [session?.token]);
   useEffect(() => {
     if (!session) return;
     return ordersChannel(session.token, session.user.branch_id, (event) => {

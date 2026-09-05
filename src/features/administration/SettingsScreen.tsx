@@ -4,6 +4,7 @@ import { FloatingTextInput as TextInput } from "../../components/FloatingTextInp
 import { api } from "../../api";
 import { getConfiguredThermalPrinter, isNativeAndroid, saveThermalPaperWidth, selectThermalPrinter, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
 import { LogoPicker } from "./LogoPicker";
+import { setSystemFontSize } from "../../SystemTheme";
 
 type SocialLink = { name: string; value: string };
 type BusinessProfile = { name: string; phone?: string | null; address?: string | null; tax_id?: string | null; receipt_footer?: string | null; primary_color?: string | null; secondary_color?: string | null; social_links?: SocialLink[] | null; show_business_details?: boolean; logo_path?: string | null };
@@ -30,6 +31,7 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
     try {
       const nextPreferences = await api<Preferences>("/preferences", token);
       setPreferences(nextPreferences);
+      setSystemFontSize(nextPreferences.receipt_font_size);
       if (isAdministrator) {
         const [nextProfile, nextSettings] = await Promise.all([
           api<BusinessProfile>("/business-profile", token), api<Settings>("/settings", token),
@@ -59,7 +61,8 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
     try {
       const saved = await api<Preferences>("/preferences", token, { method: "PUT", body: JSON.stringify({ receipt_font_size }) });
       setPreferences(saved);
-      setPrinterMessage(`Tamaño de letra guardado: ${fontSizeLabels[receipt_font_size]}.`);
+      setSystemFontSize(saved.receipt_font_size);
+      setPrinterMessage(`Tamaño de letra general guardado: ${fontSizeLabels[receipt_font_size]}.`);
     } catch (error) { setPrinterMessage((error as Error).message); }
     finally { setPrinterBusy(false); }
   }
@@ -87,8 +90,8 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
     {!!message && <Text style={styles.notice}>{message}</Text>}
     <View style={styles.card}>
       <Text style={styles.title}>Impresora térmica</Text>
-      <Text style={styles.muted}>Estas preferencias pertenecen a tu perfil y se aplicarán a los tickets que imprimas.</Text>
-      <Text style={styles.label}>Tamaño de letra del ticket</Text>
+      <Text style={styles.muted}>Esta preferencia pertenece a tu perfil y escala toda la interfaz y los tickets que imprimas.</Text>
+      <Text style={styles.label}>Tamaño de letra de todo el sistema</Text>
       <View style={styles.fontChoices}>{(["small", "medium", "large"] as ReceiptFontSize[]).map((size) => <Pressable disabled={printerBusy} key={size} style={[styles.fontChoice, preferences.receipt_font_size === size && styles.fontChoiceActive]} onPress={() => changeFontSize(size)}><Text style={[styles.fontChoiceText, size === "small" ? styles.fontPreview_small : size === "medium" ? styles.fontPreview_medium : styles.fontPreview_large]}>{fontSizeLabels[size]}</Text><Text style={styles.fontHint}>{size === "small" ? "Más compacto" : size === "medium" ? "Equilibrado" : "Más legible"}</Text></Pressable>)}</View>
       {isNativeAndroid() ? <>
         <View style={styles.printerStatus}><Text style={styles.subtitle}>{printer?.name ?? "Sin impresora configurada"}</Text><Text style={styles.muted}>{printer ? `${printer.type === "tcp" ? "Wi-Fi / TCP" : "Bluetooth"}${printer.address ? ` · ${printer.address}` : ""}` : "Vincula una impresora Bluetooth en Android o registra su dirección IP."}</Text></View>

@@ -2,8 +2,11 @@ import { useEffect, useState } from "react";
 import { Platform, Pressable, Text } from "react-native";
 
 type ThemeMode = "light" | "dark";
+export type SystemFontSize = "small" | "medium" | "large";
 const STORAGE_KEY = "pizzeria-color-theme";
 const EVENT_NAME = "pizzeria-theme-change";
+const FONT_STORAGE_KEY = "pizzeria-font-size";
+const FONT_EVENT_NAME = "pizzeria-font-size-change";
 const LIGHT_CSS = `
   :root { color-scheme: light; }
   html, body, #root { color: #29231f; }
@@ -40,6 +43,18 @@ export function toggleSystemTheme(): ThemeMode {
   return next;
 }
 
+function effectiveFontSize(): SystemFontSize {
+  if (typeof localStorage === "undefined") return "medium";
+  const value = localStorage.getItem(FONT_STORAGE_KEY);
+  return value === "small" || value === "medium" || value === "large" ? value : "medium";
+}
+
+export function setSystemFontSize(size: SystemFontSize): void {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(FONT_STORAGE_KEY, size);
+  window.dispatchEvent(new CustomEvent(FONT_EVENT_NAME, { detail: size }));
+}
+
 const DARK_CSS = `
   :root { color-scheme: light dark; }
     html, body, #root { background: #111315 !important; color: #f2f3f5 !important; }
@@ -64,11 +79,12 @@ export function SystemTheme() {
     const style = document.createElement("style");
     style.id = "pizzeria-system-theme";
     document.head.appendChild(style);
-    const classify = () => {
+    const classify = (): string => {
       style.textContent = LIGHT_CSS;
       const root = document.getElementById("root");
-      if (!root) return;
+      if (!root) return "";
       const elements = [root, ...Array.from(root.querySelectorAll<HTMLElement>("*"))];
+      const fontSizes = new Set<string>();
       const backgrounds: Record<string, string> = {
         "rgb(247, 242, 233)": "canvas", "rgb(248, 249, 250)": "canvas", "rgb(246, 247, 249)": "canvas",
         "rgb(255, 255, 255)": "surface", "rgb(255, 253, 250)": "surface",
@@ -85,6 +101,12 @@ export function SystemTheme() {
       const softBorders = new Set(["rgb(221, 209, 197)", "rgb(217, 221, 226)", "rgb(231, 233, 236)", "rgb(238, 228, 218)", "rgb(229, 231, 234)", "rgb(228, 230, 233)"]);
       elements.forEach((element) => {
         const computed = window.getComputedStyle(element);
+        const fontSize = Number.parseFloat(computed.fontSize);
+        if (Number.isFinite(fontSize) && fontSize > 0) {
+          const key = String(fontSize);
+          element.dataset.pizzeriaFontSize = key;
+          fontSizes.add(key);
+        } else delete element.dataset.pizzeriaFontSize;
         const background = backgrounds[computed.backgroundColor];
         const foreground = foregrounds[computed.color];
         if (background) element.dataset.pizzeriaBg = background;
@@ -94,16 +116,20 @@ export function SystemTheme() {
         if (softBorders.has(computed.borderTopColor) || softBorders.has(computed.borderColor)) element.dataset.pizzeriaBorder = "soft";
         else delete element.dataset.pizzeriaBorder;
       });
+      const selectedSize = effectiveFontSize();
+      const scale = selectedSize === "small" ? 0.8 : selectedSize === "large" ? 1.2 : 1;
+      return `:root { --pizzeria-font-scale: ${scale}; }\n${[...fontSizes].map((size) => `[data-pizzeria-font-size="${size}"] { font-size: calc(${size}px * var(--pizzeria-font-scale)) !important; }`).join("\n")}`;
     };
     const apply = () => {
       const mode = effectiveTheme();
       document.documentElement.dataset.pizzeriaTheme = mode;
-      classify();
-      style.textContent = mode === "dark" ? DARK_CSS : LIGHT_CSS;
+      const fontCss = classify();
+      style.textContent = `${mode === "dark" ? DARK_CSS : LIGHT_CSS}\n${fontCss}`;
     };
     const media = window.matchMedia("(prefers-color-scheme: dark)");
     const onSystemChange = () => { if (!savedTheme()) apply(); };
     window.addEventListener(EVENT_NAME, apply);
+    window.addEventListener(FONT_EVENT_NAME, apply);
     media.addEventListener?.("change", onSystemChange);
     const observer = new MutationObserver(() => apply());
     observer.observe(document.getElementById("root") ?? document.body, {
@@ -113,7 +139,7 @@ export function SystemTheme() {
       subtree: true,
     });
     apply();
-    return () => { observer.disconnect(); window.removeEventListener(EVENT_NAME, apply); media.removeEventListener?.("change", onSystemChange); style.remove(); };
+    return () => { observer.disconnect(); window.removeEventListener(EVENT_NAME, apply); window.removeEventListener(FONT_EVENT_NAME, apply); media.removeEventListener?.("change", onSystemChange); style.remove(); };
   }, []);
   return null;
 }
