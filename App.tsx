@@ -34,7 +34,7 @@ import { registerPush, showOrderNotification } from "./src/push";
 import { getConfiguredThermalPrinter, printThermalHtml, type ThermalPaperWidth } from "./src/printing";
 import { clearSession, readSession, saveSession } from "./src/session";
 import { setSystemFontSize, SystemTheme, ThemeToggle } from "./src/SystemTheme";
-import { cartAddedFeedback } from "./src/haptics";
+import { useCartAddedFeedback } from "./src/haptics";
 type Session = {
   token: string;
   expires_at?: string;
@@ -1429,6 +1429,7 @@ function stockWarningDescription(warnings: ApiStockWarning[]): string {
   }).join("\n");
 }
 function Pos({ products, token }: { products: Product[]; token: string }) {
+  const cartAddedFeedback = useCartAddedFeedback();
   type Cart = {
     variantId: number;
     name: string;

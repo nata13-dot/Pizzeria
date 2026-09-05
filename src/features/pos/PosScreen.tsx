@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, FlatList, Image, Linking, Pressable, ScrollVi
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
 import { confirmAction } from "../../components/ConfirmationDialog";
 import { api, ApiError, type ApiStockWarning } from "../../api";
-import { cartAddedFeedback } from "../../haptics";
+import { useCartAddedFeedback } from "../../haptics";
 import { getConfiguredThermalPrinter, isNativeAndroid, printThermalHtml, printThermalHtmlWithAndroid, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
 
 type Flavor = { id: number; name: string };
@@ -38,6 +38,7 @@ function scheduledIso(value: string): string | undefined {
 }
 
 export function PosScreen({ token, isAdministrator, canOverrideStock }: { token: string; isAdministrator: boolean; canOverrideStock: boolean }) {
+  const cartAddedFeedback = useCartAddedFeedback();
   const { width } = useWindowDimensions();
   const compact = width < 900;
   const [products, setProducts] = useState<Product[]>([]); const [categories, setCategories] = useState<Category[]>([]); const [combos, setCombos] = useState<Combo[]>([]); const [customers, setCustomers] = useState<Customer[]>([]); const [settings, setSettings] = useState(defaultSettings);
