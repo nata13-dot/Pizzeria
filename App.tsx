@@ -1216,14 +1216,14 @@ function AdministrationView({ profile, token }: { profile: any; token: string })
 }
 function Reports({ token }: { token: string }) {
   const options = [
-    ["cash-day", "Caja"],
-    ["sales", "Ventas"],
-    ["products", "Productos"],
-    ["inventory", "Inventario"],
-    ["purchases", "Compras"],
-    ["customers", "Clientes"],
-    ["profit", "Utilidad"],
-    ["times", "Tiempos"],
+    ["cash-day", "Caja", "Apertura, cierre, entradas, salidas y efectivo esperado."],
+    ["sales", "Ventas", "Pedidos, ventas, descuentos, cortesías y cancelaciones."],
+    ["products", "Productos", "Unidades e importe vendido por producto."],
+    ["inventory", "Inventario", "Existencias, consumo, mermas y próximos vencimientos."],
+    ["purchases", "Compras", "Compras, proveedores y costos del periodo."],
+    ["customers", "Clientes", "Frecuencia, consumo y actividad de clientes."],
+    ["profit", "Utilidad", "Ingresos, costos y utilidad estimada."],
+    ["times", "Tiempos", "Duración de preparación, cocina y entrega."],
   ];
   const [report, setReport] = useState(options[0][0]);
   const [data, setData] = useState<any>(null);
@@ -1267,16 +1267,20 @@ function Reports({ token }: { token: string }) {
           </Pressable>
         ))}
       </View>
+      <View style={s.reportHeading}>
+        <Text style={s.sectionTitle}>Reporte de {options.find(([key]) => key === report)?.[1]}</Text>
+        <Text style={s.muted}>{options.find(([key]) => key === report)?.[2]}</Text>
+      </View>
       <View style={s.reportActions}>
         <Pressable style={s.smallButton} onPress={() => load()}>
-          <Text style={s.primaryText}>Actualizar</Text>
+          <Text style={s.primaryText}>Generar reporte de {options.find(([key]) => key === report)?.[1]}</Text>
         </Pressable>
-        <Pressable style={s.smallButton} onPress={daily}>
-          <Text style={s.primaryText}>Reporte WhatsApp</Text>
-        </Pressable>
+        {report === "cash-day" && <Pressable style={s.smallButton} onPress={daily}>
+          <Text style={s.primaryText}>Enviar resumen diario por WhatsApp</Text>
+        </Pressable>}
       </View>
       <View style={s.inlineFields}><TextInput style={[s.input, s.flexField]} placeholder="Desde AAAA-MM-DD" value={from} onChangeText={setFrom} /><TextInput style={[s.input, s.flexField]} placeholder="Hasta AAAA-MM-DD" value={to} onChangeText={setTo} /></View>
-      {busy ? <ActivityIndicator color="#cf4b32" style={{ margin: 30 }} /> : <ReportData data={data} />}
+      {busy ? <ActivityIndicator color="#cf4b32" style={{ margin: 30 }} /> : <ReportData key={report} data={data} />}
       {!!message && <Text style={s.notice}>{message}</Text>}
     </View>
   );
@@ -1378,6 +1382,44 @@ function ProductsView({ data, token, onSaved, canConfigure }: { data: any[]; tok
     </View>
   );
 }
+const reportLabels: Record<string, string> = {
+  date: "Fecha", cash_day_id: "Folio de caja", closed_at: "Hora de cierre", opening_amount: "Fondo inicial",
+  expected_amount: "Efectivo esperado al cierre", actual_amount: "Efectivo contado", difference: "Diferencia declarada",
+  calculated_difference: "Diferencia calculada", orders: "Pedidos", gross_sales: "Ventas brutas", sales: "Ventas",
+  cash: "Efectivo", transfer: "Transferencia", cash_only_orders: "Pedidos en efectivo", cash_only_sales: "Ventas en efectivo",
+  transfer_only_orders: "Pedidos por transferencia", transfer_only_sales: "Ventas por transferencia", mixed_orders: "Pedidos con pago mixto",
+  mixed_sales: "Ventas con pago mixto", uncollected_orders: "Pedidos pendientes de cobro", uncollected_sales: "Ventas pendientes de cobro",
+  courtesy_orders: "Pedidos de cortesía", courtesy: "Cortesías", courtesy_total: "Importe de cortesías", discounts: "Descuentos",
+  paid_discounts: "Descuentos cobrados", courtesy_discounts: "Descuentos en cortesías", cancelled: "Pedidos cancelados",
+  cancelled_orders: "Pedidos cancelados", cancelled_total: "Importe cancelado", cancelled_discounts: "Descuentos cancelados",
+  scheduled: "Pedidos programados", scheduled_orders: "Pedidos programados", scheduled_total: "Importe programado",
+  cash_purchases: "Compras pagadas desde caja", other_income: "Otros ingresos", other_expenses: "Otros egresos",
+  total_cash_outflows: "Total de salidas de efectivo", expected_cash: "Efectivo esperado", summary: "Resumen",
+  by_day: "Desglose por día", order_date: "Fecha del pedido", daily_number: "Número de pedido", total: "Total",
+  product: "Producto", product_name: "Producto", variant: "Presentación", variant_name: "Presentación", category: "Categoría",
+  quantity: "Cantidad", units: "Unidades", revenue: "Ingresos", average_ticket: "Venta promedio", cost: "Costo",
+  estimated_cost: "Costo estimado", profit: "Utilidad", gross_profit: "Utilidad bruta", margin: "Margen",
+  ingredients: "Existencias por ingrediente", consumption: "Consumo", waste: "Mermas", waste_by_reason: "Mermas por motivo",
+  waste_by_ingredient: "Mermas por ingrediente", expiring_batches: "Lotes próximos a vencer", current_stock: "Existencia actual",
+  usable_stock: "Existencia disponible", expired_stock: "Existencia vencida", expiring_stock: "Existencia próxima a vencer",
+  stock_status: "Estado de existencia", consumed_quantity: "Cantidad consumida", waste_quantity: "Cantidad de merma",
+  sale_quantity: "Consumo por ventas", production_quantity: "Consumo en producción", returned_quantity: "Cantidad devuelta",
+  total_quantity: "Cantidad total", unit: "Unidad", reason: "Motivo", purchases: "Compras", supplier: "Proveedor",
+  customers: "Clientes", customer: "Cliente", customer_name: "Cliente", phone: "Teléfono", last_order_at: "Último pedido",
+  first_order_at: "Primer pedido", total_spent: "Consumo total", completed_orders: "Pedidos completados",
+  preparation_minutes: "Minutos de preparación", kitchen_minutes: "Minutos en cocina", delivery_minutes: "Minutos de entrega",
+  average_minutes: "Promedio en minutos", minimum_minutes: "Mínimo en minutos", maximum_minutes: "Máximo en minutos",
+  scheduled_at: "Fecha programada", status: "Estado", type: "Tipo", payment_method: "Forma de pago", name: "Nombre",
+};
+function reportLabel(key: string): string {
+  return reportLabels[key] ?? key.replaceAll("_", " ").replace(/^./, (letter) => letter.toLocaleUpperCase());
+}
+function reportValue(key: string, value: unknown): string {
+  if (typeof value === "boolean") return value ? "Sí" : "No";
+  const translations: Record<string, string> = { cash: "Efectivo", transfer: "Transferencia", mixed: "Mixto", courtesy: "Cortesía", pickup: "Para recoger", delivery: "Entrega a domicilio", whatsapp: "WhatsApp", dine_in: "Consumo en local", critical: "Crítico", low: "Bajo", ok: "Correcto", cancelled: "Cancelado", confirmed: "Confirmado", completed: "Completado", pending_payment: "Pendiente de pago", scheduled: "Programado" };
+  const text = String(value ?? "-");
+  return translations[text] ?? text;
+}
 function ReportData({ data }: { data: any }) {
   if (!data) return <Empty />;
   if (Array.isArray(data)) {
@@ -1393,9 +1435,9 @@ function ReportData({ data }: { data: any }) {
   return (
     <View style={s.metrics}>
       {Object.entries(data).map(([key, value]) => {
-        if (Array.isArray(value)) return <View style={s.reportList} key={key}><Text style={s.sectionTitle}>{key.replaceAll("_", " ")}</Text>{value.slice(0, 8).map((item, index) => <ReportRow key={`${key}-${index}`} item={item} />)}</View>;
-        if (value && typeof value === "object") return <ReportRow key={key} item={{ [key]: value }} />;
-        return <Metric key={key} label={key.replaceAll("_", " ")} value={String(value ?? "-")} />;
+        if (Array.isArray(value)) return <View style={s.reportList} key={key}><Text style={s.sectionTitle}>{reportLabel(key)}</Text>{value.length ? value.map((item, index) => <ReportRow key={`${key}-${index}`} item={item} />) : <Text style={s.muted}>Sin registros para este periodo.</Text>}</View>;
+        if (value && typeof value === "object") return <View style={s.reportList} key={key}><Text style={s.sectionTitle}>{reportLabel(key)}</Text><ReportData data={value} /></View>;
+        return <Metric key={key} label={reportLabel(key)} value={reportValue(key, value)} />;
       })}
     </View>
   );
@@ -1406,7 +1448,7 @@ function ReportRow({ item }: { item: any }) {
     <View style={s.row}>
       <View>
         <Text style={s.productName}>{String(item.name ?? item.product ?? item.date ?? item.order_date ?? item.id ?? "Registro")}</Text>
-        <Text style={s.muted}>{entries.map(([key, value]) => `${key.replaceAll("_", " ")}: ${String(value)}`).join(" · ")}</Text>
+        <Text style={s.muted}>{entries.map(([key, value]) => `${reportLabel(key)}: ${reportValue(key, value)}`).join(" · ")}</Text>
       </View>
     </View>
   );
@@ -2167,6 +2209,7 @@ const s = StyleSheet.create({
     textAlignVertical: "top",
   },
   reportLayout: { flex: 1, gap: 12 },
+  reportHeading: { backgroundColor: "white", borderColor: "#e4e6e9", borderRadius: 14, borderWidth: 1, gap: 5, padding: 16 },
   kitchenBoard: { gap: 12 },
   kitchenTabs: { borderBottomColor: "#eee4da", borderBottomWidth: 1, minWidth: "100%" },
   kitchenTab: { alignItems: "center", borderBottomColor: "transparent", borderBottomWidth: 2, flex: 1, minWidth: 108, paddingHorizontal: 10, paddingVertical: 11 },
