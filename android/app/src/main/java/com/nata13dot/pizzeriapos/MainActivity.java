@@ -12,6 +12,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(DevicePrintPlugin.class);
+        registerPlugin(NotificationTonePlugin.class);
         super.onCreate(savedInstanceState);
         WebView webView = getBridge().getWebView();
         webView.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_YES);

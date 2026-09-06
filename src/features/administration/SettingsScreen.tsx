@@ -5,6 +5,11 @@ import { api } from "../../api";
 import { getConfiguredThermalPrinter, isNativeAndroid, saveThermalPaperWidth, selectThermalPrinter, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
 import { LogoPicker } from "./LogoPicker";
 import { setSystemFontSize, type SystemFontSize } from "../../SystemTheme";
+import { useAudioPlayer } from "expo-audio";
+import * as DocumentPicker from "expo-document-picker";
+import { notificationTones, type CustomNotificationTone, type NotificationToneKey } from "../../notificationTones";
+import { registerPush } from "../../push";
+import { readNotificationPreferences, saveNotificationPreferences, type NotificationPreferences } from "../../notificationPreferences";
 
 type SocialLink = { name: string; value: string };
 type BusinessProfile = { name: string; phone?: string | null; address?: string | null; tax_id?: string | null; receipt_footer?: string | null; primary_color?: string | null; secondary_color?: string | null; social_links?: SocialLink[] | null; show_business_details?: boolean; logo_path?: string | null };
@@ -25,12 +30,14 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
   const [printerBusy, setPrinterBusy] = useState(false);
   const [printerMessage, setPrinterMessage] = useState("");
   const [preferences, setPreferences] = useState<Preferences | null>(null);
+  const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>({ mode: "fixed", sounds: ["default"], customSounds: [] });
 
   const load = useCallback(async () => {
     setBusy(true); setMessage("");
     try {
-      const nextPreferences = await api<Preferences>("/preferences", token);
+      const [nextPreferences, nextNotificationPreferences] = await Promise.all([api<Preferences>("/preferences", token), readNotificationPreferences()]);
       setPreferences(nextPreferences);
+      setNotificationPreferences(nextNotificationPreferences);
       setSystemFontSize(nextPreferences.system_font_size);
       if (isAdministrator) {
         const [nextProfile, nextSettings] = await Promise.all([
@@ -85,6 +92,39 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
   function setZone(index: number, patch: Partial<DeliveryZone>) { setSettings((current) => current ? { ...current, delivery_zones: current.delivery_zones.map((zone, position) => position === index ? { ...zone, ...patch } : zone) } : current); }
   function setPayment(index: number, patch: Partial<PaymentMethod>) { setSettings((current) => current ? { ...current, payment_methods: current.payment_methods.map((method, position) => position === index ? { ...method, ...patch } : method) } : current); }
   function setSocial(index: number, patch: Partial<SocialLink>) { setProfile((current) => current ? { ...current, social_links: (current.social_links ?? []).map((link, position) => position === index ? { ...link, ...patch } : link) } : current); }
+  function toggleNotificationTone(key: NotificationToneKey) {
+    setNotificationPreferences((current) => {
+      const selected = current.sounds;
+      if (selected.includes(key) && selected.length === 1) return current;
+      return { ...current, sounds: selected.includes(key) ? selected.filter((tone) => tone !== key) : [...selected, key] };
+    });
+  }
+  async function addNotificationTone() {
+    if (notificationPreferences.customSounds.length >= 3) return;
+    try {
+      const result = await DocumentPicker.getDocumentAsync({ type: ["audio/mpeg", "audio/mp3", "audio/wav", "audio/x-wav", "audio/wave"], copyToCacheDirectory: true });
+      if (result.canceled) return;
+      const asset = result.assets[0];
+      if (!asset || (asset.size ?? 0) > 1024 * 1024) throw new Error("El tono debe pesar como máximo 1 MB.");
+      const blob = await (await fetch(asset.uri)).blob();
+      const dataUri = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("No fue posible leer el archivo.")); reader.readAsDataURL(blob); });
+      const mimeType = asset.mimeType || blob.type;
+      if (!/^audio\/(mpeg|mp3|wav|x-wav|wave)$/.test(mimeType)) throw new Error("Selecciona un archivo MP3 o WAV.");
+      const custom: CustomNotificationTone = { key: `custom_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`, label: asset.name.replace(/\.(mp3|wav)$/i, "").slice(0, 60), file_name: asset.name.slice(0, 120), mime_type: mimeType, data_uri: dataUri };
+      setNotificationPreferences({ ...notificationPreferences, customSounds: [...notificationPreferences.customSounds, custom], sounds: [...notificationPreferences.sounds, custom.key] });
+      setMessage("Tono agregado. Guarda la configuración para activarlo en este dispositivo.");
+    } catch (error) { setMessage((error as Error).message); }
+  }
+  function removeNotificationTone(key: string) {
+    const remaining = notificationPreferences.sounds.filter((tone) => tone !== key);
+    setNotificationPreferences({ ...notificationPreferences, customSounds: notificationPreferences.customSounds.filter((tone) => tone.key !== key), sounds: remaining.length ? remaining : ["default"] });
+  }
+  async function saveNotificationSettings() {
+    setBusy(true); setMessage("");
+    try { await saveNotificationPreferences(notificationPreferences); await registerPush(token); setMessage("Sonidos guardados únicamente en este dispositivo."); }
+    catch (error) { setMessage((error as Error).message); }
+    finally { setBusy(false); }
+  }
 
   return <View style={styles.container}>
     {!!message && <Text style={styles.notice}>{message}</Text>}
@@ -102,6 +142,17 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
         <Pressable disabled={printerBusy} style={[styles.primary, printerBusy && styles.disabled]} onPress={configurePrinter}><Text style={styles.primaryText}>{printerBusy ? "Abriendo configuración..." : printer ? "Cambiar impresora" : "Configurar impresora"}</Text></Pressable>
       </> : <Text style={styles.notice}>La configuración directa está disponible dentro de la aplicación Android. En navegador se utiliza el diálogo de impresión del sistema.</Text>}
       {!!printerMessage && <Text style={styles.notice}>{printerMessage}</Text>}
+    </View>
+    <View style={styles.card}>
+      <Text style={styles.title}>Sonido de las notificaciones</Text>
+      <Text style={styles.muted}>El aviso original permanece como tono predeterminado. Elige uno fijo o agrega varios a una reproducción aleatoria.</Text>
+      <View style={styles.inline}><Pressable style={[styles.choice, notificationPreferences.mode === "fixed" && styles.choiceActive]} onPress={() => setNotificationPreferences({ ...notificationPreferences, mode: "fixed" })}><Text>Usar un tono fijo</Text></Pressable><Pressable style={[styles.choice, notificationPreferences.mode === "random" && styles.choiceActive]} onPress={() => setNotificationPreferences({ ...notificationPreferences, mode: "random" })}><Text>Reproducir tonos aleatoriamente</Text></Pressable></View>
+      <Text style={styles.label}>{notificationPreferences.mode === "random" ? "Tonos incluidos en la rotación" : "Tono seleccionado"}</Text>
+      <View style={styles.toneList}>{notificationTones.map((tone) => <NotificationToneOption key={tone.key} tone={tone} selected={notificationPreferences.sounds.includes(tone.key)} fixed={notificationPreferences.mode === "fixed"} onSelect={() => setNotificationPreferences({ ...notificationPreferences, sounds: [tone.key] })} onToggle={() => toggleNotificationTone(tone.key)} />)}{notificationPreferences.customSounds.map((tone) => <NotificationToneOption key={tone.key} tone={{ key: tone.key, label: tone.label, source: tone.data_uri }} selected={notificationPreferences.sounds.includes(tone.key)} fixed={notificationPreferences.mode === "fixed"} onSelect={() => setNotificationPreferences({ ...notificationPreferences, sounds: [tone.key] })} onToggle={() => toggleNotificationTone(tone.key)} onRemove={() => removeNotificationTone(tone.key)} />)}</View>
+      <Pressable disabled={notificationPreferences.customSounds.length >= 3} style={[styles.outlineButton, notificationPreferences.customSounds.length >= 3 && styles.disabled]} onPress={addNotificationTone}><Text style={styles.outlineText}>Agregar tono descargado</Text></Pressable>
+      <Text style={styles.muted}>Descarga el tono desde Zedge u otra aplicación y selecciónalo aquí desde Audio o Descargas. Admite MP3 y WAV; puedes guardar hasta 3 tonos propios de máximo 1 MB cada uno.</Text>
+      <Text style={styles.muted}>{notificationPreferences.mode === "random" ? `Se alternarán ${notificationPreferences.sounds.length} tonos al azar en este dispositivo.` : "Este tono sonará en los avisos de este dispositivo."}</Text>
+      <Pressable disabled={busy} style={[styles.primary, busy && styles.disabled]} onPress={saveNotificationSettings}><Text style={styles.primaryText}>Guardar sonidos en este dispositivo</Text></Pressable>
     </View>
     {isAdministrator && profile && settings && <>
     <View style={styles.card}>
@@ -153,6 +204,12 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
 const fontSizeLabels: Record<ReceiptFontSize, string> = { small: "Pequeña", medium: "Mediana", large: "Grande" };
 const fontSizePixels: Record<ReceiptFontSize, number> = { small: 12, medium: 15, large: 18 };
 
+function NotificationToneOption({ tone, selected, fixed, onSelect, onToggle, onRemove }: { tone: { key: string; label: string; source: number | string }; selected: boolean; fixed: boolean; onSelect: () => void; onToggle: () => void; onRemove?: () => void }) {
+  const player = useAudioPlayer(tone.source);
+  function preview() { void player.seekTo(0).then(() => player.play()).catch(() => undefined); }
+  return <View style={[styles.toneRow, selected && styles.toneRowActive]}><Pressable style={styles.toneSelection} onPress={fixed ? onSelect : onToggle}><Text style={styles.toneCheck}>{selected ? "✓" : ""}</Text><Text style={styles.label}>{tone.label}{tone.key === "default" ? " · Predeterminado" : ""}</Text></Pressable><Pressable style={styles.previewButton} onPress={preview}><Text style={styles.outlineText}>Escuchar</Text></Pressable>{onRemove && <Pressable style={styles.dangerButton} onPress={onRemove}><Text style={styles.dangerText}>Eliminar</Text></Pressable>}</View>;
+}
+
 function FontSizeSlider({ label, value, disabled, onChange, preview }: { label: string; value: ReceiptFontSize; disabled: boolean; onChange: (size: ReceiptFontSize) => void; preview: "system" | "ticket" }) {
   const sizes: ReceiptFontSize[] = ["small", "medium", "large"];
   const selectedIndex = sizes.indexOf(value);
@@ -174,4 +231,10 @@ function NumberField({ label, value, onChange }: { label: string; value: number;
 
 const styles = StyleSheet.create({
   container: { gap: 14 }, card: { backgroundColor: "#fffdfa", borderRadius: 16, gap: 12, padding: 18 }, loader: { margin: 40 }, title: { color: "#29231f", fontSize: 18, fontWeight: "900" }, subtitle: { color: "#29231f", fontWeight: "900", marginTop: 6 }, muted: { color: "#796b61" }, label: { color: "#29231f", fontWeight: "700" }, notice: { backgroundColor: "#fff1cc", borderRadius: 10, color: "#5f4918", padding: 12 }, input: { backgroundColor: "white", borderColor: "#ddd1c5", borderRadius: 11, borderWidth: 1, minHeight: 50, paddingHorizontal: 14 }, multiline: { minHeight: 90, paddingVertical: 12, textAlignVertical: "top" }, inline: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 10 }, flex: { flex: 1, minWidth: 160 }, numberField: { flex: 1, gap: 6, minWidth: 190 }, fixedLabel: { fontWeight: "800", minWidth: 110 }, choice: { backgroundColor: "#eee4da", borderRadius: 9, padding: 11 }, choiceActive: { backgroundColor: "#f3b19f" }, primary: { alignItems: "center", backgroundColor: "#cf4b32", borderRadius: 11, justifyContent: "center", minHeight: 50, padding: 12 }, primaryText: { color: "white", fontWeight: "800" }, outlineButton: { alignSelf: "flex-start", borderColor: "#cf4b32", borderRadius: 10, borderWidth: 1, padding: 11 }, outlineText: { color: "#cf4b32", fontWeight: "800" }, dangerButton: { borderColor: "#a82e20", borderRadius: 10, borderWidth: 1, padding: 10 }, dangerText: { color: "#a82e20", fontWeight: "800" }, disabled: { opacity: 0.45 }, zoneCard: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 13, borderWidth: 1, gap: 10, padding: 12 }, printerStatus: { backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 12, borderWidth: 1, gap: 3, padding: 13 }, divider: { backgroundColor: "#eadfd4", height: 1, marginVertical: 3 }, fontControl: { gap: 10 }, fontControlHeading: { alignItems: "center", flexDirection: "row", justifyContent: "space-between" }, fontValue: { backgroundColor: "#fff0ec", borderRadius: 12, color: "#a63c29", fontSize: 12, fontWeight: "900", overflow: "hidden", paddingHorizontal: 10, paddingVertical: 5 }, slider: { height: 30, justifyContent: "center", marginHorizontal: 9, position: "relative" }, sliderRail: { backgroundColor: "#dfd7d0", borderRadius: 3, height: 6, left: 0, position: "absolute", right: 0 }, sliderProgress: { backgroundColor: "#cf4b32", borderRadius: 3, height: 6, left: 0, position: "absolute" }, sliderStop: { backgroundColor: "#dfd7d0", borderColor: "#fffdfa", borderRadius: 8, borderWidth: 3, height: 16, marginLeft: -8, position: "absolute", width: 16 }, sliderStopActive: { backgroundColor: "#cf4b32" }, sliderThumb: { borderColor: "#cf4b32", borderRadius: 12, borderWidth: 3, height: 24, marginLeft: -12, width: 24 }, sliderLabels: { flexDirection: "row", justifyContent: "space-between" }, sliderLabel: { color: "#8a817a", fontSize: 11 }, sliderLabelActive: { color: "#a63c29", fontWeight: "900" }, systemPreview: { alignItems: "center", backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 13, borderWidth: 1, flexDirection: "row", gap: 12, minHeight: 88, padding: 14 }, previewIcon: { alignItems: "center", backgroundColor: "#cf4b32", borderRadius: 12, height: 48, justifyContent: "center", width: 48 }, previewCopy: { flex: 1, gap: 4 }, previewTitle: { color: "#29231f", fontWeight: "900" }, previewText: { color: "#796b61" }, ticketPreview: { alignSelf: "center", backgroundColor: "white", borderColor: "#d8d0c9", borderRadius: 3, borderWidth: 1, gap: 6, maxWidth: 300, padding: 16, width: "82%" }, ticketNotch: { alignSelf: "center", backgroundColor: "#eee4da", borderRadius: 3, height: 6, marginBottom: 3, width: 46 }, ticketBrand: { color: "#29231f", fontWeight: "900", textAlign: "center" }, ticketText: { color: "#29231f", fontFamily: "monospace" }, ticketRule: { borderStyle: "dashed", borderTopColor: "#796b61", borderTopWidth: 1 }, ticketTotal: { color: "#29231f", fontFamily: "monospace", fontWeight: "900", textAlign: "right" }, ticketThanks: { color: "#796b61", textAlign: "center" },
+  toneList: { gap: 8 },
+  toneRow: { alignItems: "center", backgroundColor: "#f8f3ed", borderColor: "#eadfd4", borderRadius: 12, borderWidth: 1, flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "space-between", padding: 9 },
+  toneRowActive: { backgroundColor: "#fff0ec", borderColor: "#cf4b32" },
+  toneSelection: { alignItems: "center", flex: 1, flexDirection: "row", gap: 10, minHeight: 38, minWidth: 180 },
+  toneCheck: { borderColor: "#cf4b32", borderRadius: 5, borderWidth: 2, color: "#cf4b32", fontWeight: "900", height: 24, textAlign: "center", width: 24 },
+  previewButton: { borderColor: "#cf4b32", borderRadius: 9, borderWidth: 1, padding: 9 },
 });
