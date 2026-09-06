@@ -3,6 +3,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://pizzeria-api-production-2bf0.up.railway.app/api";
 export const API_CACHE_PREFIX = "pizzeria-api-cache:v1:";
 let unauthorizedHandler: (() => void) | null = null;
+const cacheGenerations = new Map<string, number>();
 
 export function apiCacheScope(token?: string): string {
   let hash = 2166136261;
@@ -13,9 +14,15 @@ export function apiCacheScope(token?: string): string {
   return (hash >>> 0).toString(36);
 }
 
+export function apiCacheGeneration(token?: string): number {
+  return cacheGenerations.get(apiCacheScope(token)) ?? 0;
+}
+
 export async function clearApiCache(token?: string): Promise<void> {
+  const scope = apiCacheScope(token);
+  cacheGenerations.set(scope, (cacheGenerations.get(scope) ?? 0) + 1);
   try {
-    const prefix = `${API_CACHE_PREFIX}${apiCacheScope(token)}:`;
+    const prefix = `${API_CACHE_PREFIX}${scope}:`;
     const keys = (await AsyncStorage.getAllKeys()).filter((key) => key.startsWith(prefix));
     if (keys.length) await AsyncStorage.multiRemove(keys);
   } catch {

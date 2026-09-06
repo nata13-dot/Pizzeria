@@ -1,23 +1,29 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { API_CACHE_PREFIX, ApiError, api, apiCacheScope } from "./api";
+import { API_CACHE_PREFIX, ApiError, api, apiCacheGeneration, apiCacheScope } from "./api";
 
 type CacheEntry<T> = { cachedAt: number; data: T };
 type CachedRequestOptions = { forceRefresh?: boolean; ttlMs?: number };
 
 const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const MAX_FALLBACK_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const memoryCache = new Map<string, CacheEntry<unknown>>();
+const requestsInProgress = new Map<string, Promise<unknown>>();
 
 function cacheKey(path: string, token?: string): string {
-  return `${API_CACHE_PREFIX}${apiCacheScope(token)}:${path}`;
+  return `${API_CACHE_PREFIX}${apiCacheScope(token)}:${apiCacheGeneration(token)}:${path}`;
 }
 
 async function readEntry<T>(key: string): Promise<CacheEntry<T> | null> {
+  const memoryEntry = memoryCache.get(key) as CacheEntry<T> | undefined;
+  if (memoryEntry) return memoryEntry;
   try {
     const stored = await AsyncStorage.getItem(key);
     if (!stored) return null;
     const entry = JSON.parse(stored) as CacheEntry<T>;
-    return typeof entry?.cachedAt === "number" ? entry : null;
+    if (typeof entry?.cachedAt !== "number") return null;
+    memoryCache.set(key, entry);
+    return entry;
   } catch {
     return null;
   }
@@ -30,12 +36,21 @@ export async function cachedApi<T>(path: string, token?: string, options: Cached
   if (!options.forceRefresh && entry && age <= (options.ttlMs ?? DEFAULT_TTL_MS)) return entry.data;
 
   try {
-    const data = await api<T>(path, token);
-    await AsyncStorage.setItem(key, JSON.stringify({ cachedAt: Date.now(), data })).catch(() => undefined);
+    let request = requestsInProgress.get(key) as Promise<T> | undefined;
+    if (!request) {
+      request = api<T>(path, token);
+      requestsInProgress.set(key, request);
+    }
+    const data = await request;
+    const nextEntry: CacheEntry<T> = { cachedAt: Date.now(), data };
+    memoryCache.set(key, nextEntry);
+    void AsyncStorage.setItem(key, JSON.stringify(nextEntry)).catch(() => undefined);
     return data;
   } catch (error) {
     if (error instanceof ApiError && error.status < 500) throw error;
     if (entry && age <= MAX_FALLBACK_AGE_MS) return entry.data;
     throw error;
+  } finally {
+    requestsInProgress.delete(key);
   }
 }

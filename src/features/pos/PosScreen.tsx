@@ -58,13 +58,17 @@ export function PosScreen({ token, isAdministrator, canOverrideStock }: { token:
 
   const load = useCallback(async (forceRefresh = false) => {
     setBusy(true); setMessage("");
+    const customersRequest = api<CustomerPage>("/customers?active=1", token)
+      .then((customerPage) => setCustomers(customerPage.data))
+      .catch((error) => setMessage((current) => current || (error as Error).message));
     try {
-      const [nextProducts, nextCategories, nextCombos, customerPage, nextSettings] = await Promise.all([
-        cachedApi<Product[]>("/products", token, { forceRefresh }), cachedApi<Category[]>("/product-categories", token, { forceRefresh }), cachedApi<Combo[]>("/combos", token, { forceRefresh }), api<CustomerPage>("/customers?active=1", token), cachedApi<OperationalSettings>("/operational-settings", token, { forceRefresh }),
+      const [nextProducts, nextCategories, nextCombos, nextSettings] = await Promise.all([
+        cachedApi<Product[]>("/products", token, { forceRefresh }), cachedApi<Category[]>("/product-categories", token, { forceRefresh }), cachedApi<Combo[]>("/combos", token, { forceRefresh }), cachedApi<OperationalSettings>("/operational-settings", token, { forceRefresh }),
       ]);
-      setProducts(nextProducts); setCategories(nextCategories); setCombos(nextCombos); setCustomers(customerPage.data); setSettings(nextSettings);
+      setProducts(nextProducts); setCategories(nextCategories); setCombos(nextCombos); setSettings(nextSettings);
       const active = nextSettings.payment_methods.filter((method) => method.active); if (!active.some((method) => method.key === payment)) setPayment(active[0]?.key ?? "cash");
     } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
+    await customersRequest;
   }, [token]);
   useEffect(() => { load(); }, [load]);
 
