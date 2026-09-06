@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from "react-native";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
+import { confirmAction } from "../../components/ConfirmationDialog";
 import { api } from "../../api";
 import { getConfiguredThermalPrinter, isNativeAndroid, saveThermalPaperWidth, selectThermalPrinter, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
 import { LogoPicker } from "./LogoPicker";
@@ -31,6 +32,7 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
   const [printerMessage, setPrinterMessage] = useState("");
   const [preferences, setPreferences] = useState<Preferences | null>(null);
   const [notificationPreferences, setNotificationPreferences] = useState<NotificationPreferences>({ mode: "fixed", sounds: ["default"], customSounds: [] });
+  const [backupBusy, setBackupBusy] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true); setMessage("");
@@ -84,6 +86,16 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
   async function saveSettings() {
     if (!settings) return; setBusy(true); setMessage("");
     try { setSettings(await api<Settings>("/settings", token, { method: "PUT", body: JSON.stringify({ settings }) })); setMessage("Ajustes operativos guardados."); } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
+  }
+  async function downloadDatabaseBackup() {
+    if (!await confirmAction("El respaldo contiene información privada del negocio y de sus usuarios. ¿Deseas descargarlo ahora?")) return;
+    setBackupBusy(true); setMessage("");
+    try {
+      const result = await api<{ download_url: string }>("/database-backups", token, { method: "POST" });
+      await Linking.openURL(result.download_url);
+      setMessage("Respaldo generado. La descarga fue enviada al navegador o al gestor de descargas.");
+    } catch (error) { setMessage((error as Error).message); }
+    finally { setBackupBusy(false); }
   }
   if (busy && (!preferences || (isAdministrator && (!profile || !settings)))) return <ActivityIndicator color="#cf4b32" style={styles.loader} />;
   if (!preferences || (isAdministrator && (!profile || !settings))) return <Text style={styles.notice}>{message || "No fue posible cargar los ajustes."}</Text>;
@@ -196,6 +208,11 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
       <Pressable style={[styles.choice, settings.loyalty_enabled && styles.choiceActive]} onPress={() => setSettings({ ...settings, loyalty_enabled: !settings.loyalty_enabled })}><Text>{settings.loyalty_enabled ? "Programa de puntos activo" : "Programa de puntos desactivado"}</Text></Pressable>
       <NumberField label="Valor monetario de cada punto" value={settings.loyalty_point_value} onChange={(value) => setNumber("loyalty_point_value", value)} />
       <Pressable disabled={busy || settings.delivery_zones.some((zone) => !zone.name.trim()) || !settings.payment_methods.some((method) => method.active)} style={[styles.primary, (busy || settings.delivery_zones.some((zone) => !zone.name.trim()) || !settings.payment_methods.some((method) => method.active)) && styles.disabled]} onPress={saveSettings}><Text style={styles.primaryText}>Guardar ajustes operativos</Text></Pressable>
+    </View>
+    <View style={styles.card}>
+      <Text style={styles.title}>Respaldo de la base de datos</Text>
+      <Text style={styles.muted}>Descarga una copia completa en formato JSON. Guárdala en un lugar seguro: contiene datos privados y credenciales cifradas.</Text>
+      <Pressable disabled={backupBusy} style={[styles.primary, backupBusy && styles.disabled]} onPress={downloadDatabaseBackup}><Text style={styles.primaryText}>{backupBusy ? "Generando respaldo..." : "Descargar respaldo completo"}</Text></Pressable>
     </View>
     </>}
   </View>;
