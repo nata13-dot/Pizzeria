@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://pizzeria-api-production-2bf0.up.railway.app/api";
+export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://api.espinazodeldiablo.site/api";
 export const API_CACHE_PREFIX = "pizzeria-api-cache:v1:";
 let unauthorizedHandler: (() => void) | null = null;
 const cacheGenerations = new Map<string, number>();
