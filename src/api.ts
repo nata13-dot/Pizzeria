@@ -4,6 +4,37 @@ export const API_URL = process.env.EXPO_PUBLIC_API_URL ?? "https://pizzeria-api-
 export const API_CACHE_PREFIX = "pizzeria-api-cache:v1:";
 let unauthorizedHandler: (() => void) | null = null;
 const cacheGenerations = new Map<string, number>();
+type AutomaticCacheEntry = { cachedAt: number; data: unknown };
+const automaticMemoryCache = new Map<string, AutomaticCacheEntry>();
+const automaticRequests = new Map<string, Promise<unknown>>();
+const MAX_OFFLINE_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+type CacheInvalidator = (scope: string, pathPrefixes: string[]) => void;
+let externalCacheInvalidator: CacheInvalidator | null = null;
+
+function automaticCacheKey(path: string, token?: string): string {
+  return `${API_CACHE_PREFIX}${apiCacheScope(token)}:${apiCacheGeneration(token)}:${path}`;
+}
+
+function automaticCacheTtl(path: string): number {
+  if (/^\/(kitchen|delivery)\/orders/.test(path) || /^\/orders(?:\?|$)/.test(path)) return 8_000;
+  if (/^\/(products|product-categories|combos|catalogs|settings|operational-settings|business-profile|roles|permissions)/.test(path)) return 10 * 60_000;
+  return 60_000;
+}
+
+async function readAutomaticCache<T>(key: string): Promise<AutomaticCacheEntry | null> {
+  const memory = automaticMemoryCache.get(key);
+  if (memory) return memory;
+  try {
+    const stored = await AsyncStorage.getItem(key);
+    if (!stored) return null;
+    const entry = JSON.parse(stored) as AutomaticCacheEntry;
+    if (typeof entry?.cachedAt !== "number" || !("data" in entry)) return null;
+    automaticMemoryCache.set(key, entry);
+    return entry;
+  } catch {
+    return null;
+  }
+}
 
 export function apiCacheScope(token?: string): string {
   let hash = 2166136261;
@@ -18,9 +49,60 @@ export function apiCacheGeneration(token?: string): number {
   return cacheGenerations.get(apiCacheScope(token)) ?? 0;
 }
 
+export function setExternalCacheInvalidator(invalidator: CacheInvalidator): void {
+  externalCacheInvalidator = invalidator;
+}
+
+function affectedCachePaths(mutationPath: string): string[] {
+  if (/^\/orders(?:\/|$)/.test(mutationPath) || /^\/(kitchen|delivery)\/orders(?:\/|$)/.test(mutationPath)) {
+    return ["/orders", "/kitchen/orders", "/delivery/orders", "/reports/cash-day", "/inventory"];
+  }
+  if (/^\/(products?|product-categories|combos?|modifiers?|recipes?)(?:\/|$)/.test(mutationPath)) {
+    return ["/products", "/product-categories", "/combos", "/modifiers", "/recipes"];
+  }
+  if (/^\/(ingredients?|inventory|purchases?|production(?:-recipes|-batches)?)(?:\/|$)/.test(mutationPath)) {
+    return ["/ingredients", "/inventory", "/purchases", "/production", "/catalogs"];
+  }
+  if (/^\/(customers?|loyalty)(?:\/|$)/.test(mutationPath)) return ["/customers", "/loyalty"];
+  if (/^\/(users?|roles?|permissions?|preferences|settings|operational-settings|business-profile)(?:\/|$)/.test(mutationPath)) {
+    return ["/users", "/roles", "/permissions", "/preferences", "/settings", "/operational-settings", "/business-profile"];
+  }
+  const resource = mutationPath.match(/^\/[^/?]+/)?.[0];
+  return resource ? [resource] : [];
+}
+
+function pathFromCacheKey(key: string, scope: string): string | null {
+  const scopedPrefix = `${API_CACHE_PREFIX}${scope}:`;
+  if (!key.startsWith(scopedPrefix)) return null;
+  const generationSeparator = key.indexOf(":", scopedPrefix.length);
+  return generationSeparator < 0 ? null : key.slice(generationSeparator + 1);
+}
+
+function matchesPathPrefix(path: string | null, prefixes: string[]): boolean {
+  return path !== null && prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`) || path.startsWith(`${prefix}?`));
+}
+
+async function invalidateApiCacheForMutation(path: string, token: string): Promise<void> {
+  const scope = apiCacheScope(token);
+  const prefixes = affectedCachePaths(path);
+  for (const key of automaticMemoryCache.keys()) {
+    if (matchesPathPrefix(pathFromCacheKey(key, scope), prefixes)) automaticMemoryCache.delete(key);
+  }
+  externalCacheInvalidator?.(scope, prefixes);
+  try {
+    const keys = (await AsyncStorage.getAllKeys()).filter((key) => matchesPathPrefix(pathFromCacheKey(key, scope), prefixes));
+    if (keys.length) await AsyncStorage.multiRemove(keys);
+  } catch {
+    // A failed cache eviction must not turn a successful mutation into an error.
+  }
+}
+
 export async function clearApiCache(token?: string): Promise<void> {
   const scope = apiCacheScope(token);
   cacheGenerations.set(scope, (cacheGenerations.get(scope) ?? 0) + 1);
+  for (const key of automaticMemoryCache.keys()) {
+    if (key.startsWith(`${API_CACHE_PREFIX}${scope}:`)) automaticMemoryCache.delete(key);
+  }
   try {
     const prefix = `${API_CACHE_PREFIX}${scope}:`;
     const keys = (await AsyncStorage.getAllKeys()).filter((key) => key.startsWith(prefix));
@@ -113,6 +195,34 @@ export async function api<T>(
   token?: string,
   options: RequestInit = {},
 ): Promise<T> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const bypassCache = options.cache === "no-store" || options.cache === "reload";
+  const key = automaticCacheKey(path, token);
+  let staleEntry: AutomaticCacheEntry | null = null;
+  if (method === "GET" && !bypassCache) {
+    const cached = await readAutomaticCache<T>(key);
+    staleEntry = cached;
+    if (cached && Date.now() - cached.cachedAt <= automaticCacheTtl(path)) return cached.data as T;
+    const pending = automaticRequests.get(key) as Promise<T> | undefined;
+    if (pending) return pending;
+  }
+
+  const request = requestApi<T>(path, token, options, method, key);
+  if (method === "GET") automaticRequests.set(key, request);
+  try {
+    return await request;
+  } catch (error) {
+    const canUseOfflineCopy = !(error instanceof ApiError) || error.status >= 500;
+    if (method === "GET" && canUseOfflineCopy && staleEntry && Date.now() - staleEntry.cachedAt <= MAX_OFFLINE_CACHE_AGE_MS) {
+      return staleEntry.data as T;
+    }
+    throw error;
+  } finally {
+    if (method === "GET") automaticRequests.delete(key);
+  }
+}
+
+async function requestApi<T>(path: string, token: string | undefined, options: RequestInit, method: string, key: string): Promise<T> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
   let response: Response;
@@ -146,7 +256,13 @@ export async function api<T>(
     );
   }
 
-  if ((options.method ?? "GET").toUpperCase() !== "GET" && token) await clearApiCache(token);
+  if (method === "GET") {
+    const entry: AutomaticCacheEntry = { cachedAt: Date.now(), data: rawData };
+    automaticMemoryCache.set(key, entry);
+    void AsyncStorage.setItem(key, JSON.stringify(entry)).catch(() => undefined);
+  } else if (token) {
+    await invalidateApiCacheForMutation(path, token);
+  }
 
   return rawData as T;
 }

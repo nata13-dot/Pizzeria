@@ -1,6 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import { API_CACHE_PREFIX, ApiError, api, apiCacheGeneration, apiCacheScope } from "./api";
+import { API_CACHE_PREFIX, ApiError, api, apiCacheGeneration, apiCacheScope, setExternalCacheInvalidator } from "./api";
 
 type CacheEntry<T> = { cachedAt: number; data: T };
 type CachedRequestOptions = { forceRefresh?: boolean; ttlMs?: number };
@@ -9,6 +9,23 @@ const DEFAULT_TTL_MS = 5 * 60 * 1000;
 const MAX_FALLBACK_AGE_MS = 7 * 24 * 60 * 60 * 1000;
 const memoryCache = new Map<string, CacheEntry<unknown>>();
 const requestsInProgress = new Map<string, Promise<unknown>>();
+
+function pathFromCacheKey(key: string, scope: string): string | null {
+  const scopedPrefix = `${API_CACHE_PREFIX}${scope}:`;
+  if (!key.startsWith(scopedPrefix)) return null;
+  const generationSeparator = key.indexOf(":", scopedPrefix.length);
+  return generationSeparator < 0 ? null : key.slice(generationSeparator + 1);
+}
+
+setExternalCacheInvalidator((scope, prefixes) => {
+  for (const key of memoryCache.keys()) {
+    const path = pathFromCacheKey(key, scope);
+    if (path && prefixes.some((prefix) => path === prefix || path.startsWith(`${prefix}/`) || path.startsWith(`${prefix}?`))) {
+      memoryCache.delete(key);
+      requestsInProgress.delete(key);
+    }
+  }
+});
 
 function cacheKey(path: string, token?: string): string {
   return `${API_CACHE_PREFIX}${apiCacheScope(token)}:${apiCacheGeneration(token)}:${path}`;
@@ -38,7 +55,7 @@ export async function cachedApi<T>(path: string, token?: string, options: Cached
   try {
     let request = requestsInProgress.get(key) as Promise<T> | undefined;
     if (!request) {
-      request = api<T>(path, token);
+      request = api<T>(path, token, { cache: "no-store" });
       requestsInProgress.set(key, request);
     }
     const data = await request;

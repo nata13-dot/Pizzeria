@@ -1,13 +1,14 @@
 import { StatusBar } from "expo-status-bar";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
-import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from "react";
+import { Component, type ErrorInfo, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
   Image,
   Linking,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   SafeAreaView,
@@ -20,6 +21,7 @@ import {
 import { FloatingTextInput as TextInput } from "./src/components/FloatingTextInput";
 import { ConfirmationDialogHost, confirmAction } from "./src/components/ConfirmationDialog";
 import { api, ApiError, clearApiCache, type ApiStockWarning, setUnauthorizedHandler } from "./src/api";
+import { cachedApi } from "./src/apiCache";
 import { CashScreen } from "./src/features/administration/CashScreen";
 import { CustomersScreen } from "./src/features/administration/CustomersScreen";
 import { UsersScreen } from "./src/features/administration/UsersScreen";
@@ -516,7 +518,10 @@ function DataScreen({ screen, token, branchId, isAdministrator }: { screen: Scre
     if (showSpinner) setBusy(true);
     setError("");
     try {
-      const x: any = await api(endpoint, token);
+      const x: any = await cachedApi(endpoint, token, {
+        forceRefresh: !showSpinner,
+        ttlMs: screen === "kitchen" || screen === "delivery" ? 8_000 : undefined,
+      });
       if (requestId !== loadRequestId.current || requestSource !== loadSourceRef.current) return;
       setData(x.data ?? (Array.isArray(x)?x:[x]));
     } catch (e) {
@@ -1017,6 +1022,21 @@ function KitchenBoard({ orders, token, onAction }: { orders: Order[]; token: str
     { status: "preparing", title: "Preparando", empty: "No hay pedidos en preparación", icon: "♨" },
     { status: "prepared", title: "Listos", empty: "No hay pedidos listos para entregar", icon: "✓" },
   ];
+  const nativeApp = Platform.OS !== "web" || Capacitor.isNativePlatform();
+  const activeStatusRef = useRef(activeStatus);
+  activeStatusRef.current = activeStatus;
+  const swipeResponder = useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_event, gesture) => nativeApp && compact && Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
+    onPanResponderRelease: (_event, gesture) => {
+      const isIntentionalSwipe = Math.abs(gesture.dx) >= 70 || (Math.abs(gesture.dx) >= 35 && Math.abs(gesture.vx) >= 0.35);
+      if (!isIntentionalSwipe) return;
+      const currentIndex = columns.findIndex((column) => column.status === activeStatusRef.current);
+      const direction = gesture.dx < 0 ? 1 : -1;
+      const nextIndex = Math.max(0, Math.min(columns.length - 1, currentIndex + direction));
+      if (nextIndex !== currentIndex) setActiveStatus(columns[nextIndex].status);
+    },
+    onPanResponderTerminationRequest: () => true,
+  }), [compact, nativeApp]);
   async function advance(order: Order) {
     if (actionLocks.current.has(order.id)) return;
     actionLocks.current.add(order.id);
@@ -1037,7 +1057,7 @@ function KitchenBoard({ orders, token, onAction }: { orders: Order[]; token: str
       const tone = kitchenTone(column.status);
       return <Pressable key={column.status} onPress={() => setActiveStatus(column.status)} style={[s.kitchenTab, activeStatus === column.status && s.kitchenTabActive, activeStatus === column.status && { borderBottomColor: tone }]}><Text style={[s.kitchenTabText, activeStatus === column.status && { color: tone }]}>{column.title} ({count})</Text></Pressable>;
     })}</ScrollView>}
-    <View style={[s.board, compact && s.boardCompact]}>{visibleColumns.map(({ status, title, empty, icon }) => {
+    <View {...(nativeApp && compact ? swipeResponder.panHandlers : {})} style={[s.board, compact && s.boardCompact]}>{visibleColumns.map(({ status, title, empty, icon }) => {
     const columnOrders = orders.filter((order) => order.status === status);
     const tone = kitchenTone(status);
     return <View style={[s.boardColumn, compact && s.boardColumnCompact]} key={status}>
