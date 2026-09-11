@@ -42,6 +42,7 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test src/*.test.mjs",
     "build:web": "expo export --platform web",
     "start:production": "serve -s dist -l tcp://0.0.0.0:$PORT",
     "cap:sync": "npm run build:web && cap sync android && npm run cap:sounds",

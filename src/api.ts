@@ -17,7 +17,7 @@ function automaticCacheKey(path: string, token?: string): string {
 
 function automaticCacheTtl(path: string): number {
   if (/^\/(kitchen|delivery)\/orders/.test(path) || /^\/orders(?:\?|$)/.test(path)) return 8_000;
-  if (/^\/(products|product-categories|combos|catalogs|settings|operational-settings|business-profile|roles|permissions)/.test(path)) return 10 * 60_000;
+  if (/^\/(products|pos\/catalog|product-categories|combos|catalogs|settings|operational-settings|business-profile|roles|permissions)/.test(path)) return 10 * 60_000;
   return 60_000;
 }
 
@@ -58,7 +58,7 @@ function affectedCachePaths(mutationPath: string): string[] {
     return ["/orders", "/kitchen/orders", "/delivery/orders", "/reports/cash-day", "/inventory"];
   }
   if (/^\/(products?|product-categories|combos?|modifiers?|recipes?)(?:\/|$)/.test(mutationPath)) {
-    return ["/products", "/product-categories", "/combos", "/modifiers", "/recipes"];
+    return ["/products", "/pos/catalog", "/product-categories", "/combos", "/modifiers", "/recipes"];
   }
   if (/^\/(ingredients?|inventory|purchases?|production(?:-recipes|-batches)?)(?:\/|$)/.test(mutationPath)) {
     return ["/ingredients", "/inventory", "/purchases", "/production", "/catalogs"];

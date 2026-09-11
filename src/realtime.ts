@@ -14,7 +14,12 @@ export type OrderStatusEvent = {
   scheduled_at?: string | null;
 };
 
-export function ordersChannel(token: string, branchId: number, onChange: (event: OrderStatusEvent) => void): () => void {
+export function ordersChannel(
+  token: string,
+  branchId: number,
+  onChange: (event: OrderStatusEvent) => void,
+  onConnectionChange?: (connected: boolean) => void,
+): () => void {
   try {
     const host = process.env.EXPO_PUBLIC_REVERB_HOST;
     const key = process.env.EXPO_PUBLIC_REVERB_KEY;
@@ -33,12 +38,17 @@ export function ordersChannel(token: string, branchId: number, onChange: (event:
       authEndpoint: `${API_URL}/broadcasting/auth`,
       auth: { headers: { Authorization: `Bearer ${token}`, Accept: "application/json" } },
     });
+    const connection = (echo.connector as unknown as { pusher?: { connection?: { bind: (event: string, callback: () => void) => void } } }).pusher?.connection;
+    connection?.bind("connected", () => onConnectionChange?.(true));
+    connection?.bind("disconnected", () => onConnectionChange?.(false));
+    connection?.bind("error", () => onConnectionChange?.(false));
     echo.private(`branch.${branchId}.orders`).listen("OrderStatusChanged", onChange);
     return () => {
       echo.leave(`branch.${branchId}.orders`);
       echo.disconnect();
     };
   } catch (error) {
+    onConnectionChange?.(false);
     console.warn("Actualización en tiempo real no disponible; se mantiene la recarga periódica.", error);
     return () => {};
   }

@@ -4,6 +4,7 @@ import { Capacitor } from "@capacitor/core";
 import { Component, type ErrorInfo, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  AppState,
   FlatList,
   Image,
   Linking,
@@ -32,6 +33,7 @@ import { InventoryScreen } from "./src/features/operations/InventoryScreen";
 import { ProductionScreen } from "./src/features/operations/ProductionScreen";
 import { PurchasesScreen } from "./src/features/operations/PurchasesScreen";
 import { ordersChannel } from "./src/realtime";
+import { coalescedReloadDelay, operationalPollInterval } from "./src/refreshPolicy";
 import { registerPush, showOrderNotification } from "./src/push";
 import { getConfiguredThermalPrinter, printThermalHtml, type ThermalPaperWidth } from "./src/printing";
 import { clearSession, readSession, saveSession } from "./src/session";
@@ -509,10 +511,20 @@ function DataScreen({ screen, token, branchId, isAdministrator }: { screen: Scre
           ? "/delivery/orders"
           : "/products";
   const loadRequestId = useRef(0);
+  const loadInFlight = useRef<Promise<void> | null>(null);
+  const loadInFlightSource = useRef("");
+  const lastLoadAt = useRef(0);
   const loadSource = `${screen}\u0000${endpoint}\u0000${token}`;
   const loadSourceRef = useRef(loadSource);
   loadSourceRef.current = loadSource;
-  async function load(showSpinner = true) {
+  async function load(showSpinner = true): Promise<void> {
+    if (loadInFlight.current) {
+      const pending = loadInFlight.current;
+      const pendingSource = loadInFlightSource.current;
+      await pending;
+      return pendingSource === loadSource ? undefined : load(showSpinner);
+    }
+    const operation = (async (): Promise<void> => {
     const requestId = ++loadRequestId.current;
     const requestSource = loadSource;
     if (showSpinner) setBusy(true);
@@ -530,6 +542,15 @@ function DataScreen({ screen, token, branchId, isAdministrator }: { screen: Scre
     } finally {
       if (requestId === loadRequestId.current && requestSource === loadSourceRef.current) setBusy(false);
     }
+    })();
+    loadInFlight.current = operation;
+    loadInFlightSource.current = loadSource;
+    try {
+      await operation;
+      lastLoadAt.current = Date.now();
+    } finally {
+      if (loadInFlight.current === operation) loadInFlight.current = null;
+    }
   }
   useEffect(() => {
     load();
@@ -537,10 +558,29 @@ function DataScreen({ screen, token, branchId, isAdministrator }: { screen: Scre
   }, [screen, token]);
   useEffect(() => {
     if (screen === "kitchen" || screen === "delivery") {
-      const refresh = setInterval(() => load(false), 10000);
-      const leave = ordersChannel(token, branchId, () => load(false));
+      let connected = false;
+      let background = AppState.currentState !== "active";
+      let poll: ReturnType<typeof setTimeout>;
+      let coalesce: ReturnType<typeof setTimeout> | undefined;
+      const schedulePoll = () => {
+        clearTimeout(poll);
+        poll = setTimeout(async () => {
+          if (!background) await load(false);
+          schedulePoll();
+        }, operationalPollInterval(connected, !background));
+      };
+      const requestReload = () => {
+        clearTimeout(coalesce);
+        const delay = coalescedReloadDelay(lastLoadAt.current);
+        coalesce = setTimeout(() => { if (!background) void load(false); }, delay);
+      };
+      const leave = ordersChannel(token, branchId, requestReload, (value) => { connected = value; schedulePoll(); });
+      const subscription = AppState.addEventListener("change", (state) => { background = state !== "active"; if (!background) requestReload(); schedulePoll(); });
+      schedulePoll();
       return () => {
-        clearInterval(refresh);
+        clearTimeout(poll);
+        clearTimeout(coalesce);
+        subscription.remove();
         leave();
       };
     }
@@ -637,9 +677,20 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
   const [sendFailures, setSendFailures] = useState<Record<number, KitchenSendFailure>>({});
   const [cancellationReasons, setCancellationReasons] = useState<Record<number, string>>({});
   const loadRequestId = useRef(0);
+  const loadInFlight = useRef<Promise<Order[] | null> | null>(null);
+  const loadInFlightSource = useRef("");
+  const lastLoadAt = useRef(0);
   const actionLocks = useRef(new Set<number>());
 
   async function load(initial = false, indicate = false): Promise<Order[] | null> {
+    const source = `${date}\u0000${token}`;
+    if (loadInFlight.current) {
+      const pending = loadInFlight.current;
+      const pendingSource = loadInFlightSource.current;
+      const result = await pending;
+      return pendingSource === source ? result : load(initial, indicate);
+    }
+    const operation = (async (): Promise<Order[] | null> => {
     const requestId = ++loadRequestId.current;
     if (initial) setBusy(true);
     if (indicate) setRefreshing(true);
@@ -669,6 +720,16 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
         setRefreshing(false);
       }
     }
+    })();
+    loadInFlight.current = operation;
+    loadInFlightSource.current = source;
+    try {
+      const result = await operation;
+      lastLoadAt.current = Date.now();
+      return result;
+    } finally {
+      if (loadInFlight.current === operation) loadInFlight.current = null;
+    }
   }
 
   useEffect(() => {
@@ -683,10 +744,26 @@ function OrdersDayScreen({ token, branchId, isAdministrator }: { token: string; 
     return () => clearInterval(midnightCheck);
   }, []);
   useEffect(() => {
-    const refresh = setInterval(() => load(false), 10000);
-    const leave = ordersChannel(token, branchId, () => load(false));
+    let connected = false;
+    let background = AppState.currentState !== "active";
+    let poll: ReturnType<typeof setTimeout>;
+    let coalesce: ReturnType<typeof setTimeout> | undefined;
+    const schedulePoll = () => {
+      clearTimeout(poll);
+      poll = setTimeout(async () => { if (!background) await load(false); schedulePoll(); }, operationalPollInterval(connected, !background));
+    };
+    const requestReload = () => {
+      clearTimeout(coalesce);
+      const delay = coalescedReloadDelay(lastLoadAt.current);
+      coalesce = setTimeout(() => { if (!background) void load(false); }, delay);
+    };
+    const leave = ordersChannel(token, branchId, requestReload, (value) => { connected = value; schedulePoll(); });
+    const subscription = AppState.addEventListener("change", (state) => { background = state !== "active"; if (!background) requestReload(); schedulePoll(); });
+    schedulePoll();
     return () => {
-      clearInterval(refresh);
+      clearTimeout(poll);
+      clearTimeout(coalesce);
+      subscription.remove();
       leave();
     };
   }, [date, token, branchId]);

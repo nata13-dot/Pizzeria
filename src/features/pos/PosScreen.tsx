@@ -63,8 +63,18 @@ export function PosScreen({ token, isAdministrator, canOverrideStock }: { token:
       .catch((error) => setMessage((current) => current || (error as Error).message));
     try {
       const [nextProducts, nextCategories, nextCombos, nextSettings] = await Promise.all([
-        cachedApi<Product[]>("/products", token, { forceRefresh }), cachedApi<Category[]>("/product-categories", token, { forceRefresh }), cachedApi<Combo[]>("/combos", token, { forceRefresh }), cachedApi<OperationalSettings>("/operational-settings", token, { forceRefresh }),
+        cachedApi<Product[]>("/pos/catalog", token, { forceRefresh }), cachedApi<Category[]>("/product-categories", token, { forceRefresh }), cachedApi<Combo[]>("/combos", token, { forceRefresh }), cachedApi<OperationalSettings>("/operational-settings", token, { forceRefresh }),
       ]);
+      if (__DEV__) {
+        const serialized = JSON.stringify(nextProducts);
+        const imageCharacters = nextProducts.reduce((sum, product) => sum + (product.image_data_uri?.length ?? 0), 0);
+        console.info("pos.catalog", {
+          approximateBytes: serialized.length,
+          imageDataUriCharacters: imageCharacters,
+          imagePercent: serialized.length ? Math.round(imageCharacters * 10_000 / serialized.length) / 100 : 0,
+          products: nextProducts.length,
+        });
+      }
       setProducts(nextProducts); setCategories(nextCategories); setCombos(nextCombos); setSettings(nextSettings);
       const active = nextSettings.payment_methods.filter((method) => method.active); if (!active.some((method) => method.key === payment)) setPayment(active[0]?.key ?? "cash");
     } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
