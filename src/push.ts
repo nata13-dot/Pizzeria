@@ -1,7 +1,6 @@
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
-import * as Notifications from "expo-notifications";
 import { Capacitor } from "@capacitor/core";
 import { registerPlugin } from "@capacitor/core";
 import { LocalNotifications } from "@capacitor/local-notifications";
@@ -24,9 +23,17 @@ function selectTone(settings: NotificationPreferences): NotificationToneKey {
   return settings.mode === "random" ? tones[Math.floor(Math.random() * tones.length)] : tones[0];
 }
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({ shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true }),
-});
+let expoNotifications: Promise<typeof import("expo-notifications")> | undefined;
+function loadExpoNotifications(): Promise<typeof import("expo-notifications")> {
+  // Importing this module itself installs native token listeners. Only load it
+  // on Expo native; browsers and Capacitor use their own notification APIs.
+  return expoNotifications ??= import("expo-notifications").then((notifications) => {
+    notifications.setNotificationHandler({
+      handleNotification: async () => ({ shouldPlaySound: true, shouldSetBadge: false, shouldShowBanner: true, shouldShowList: true }),
+    });
+    return notifications;
+  });
+}
 
 export async function registerPush(token: string): Promise<void> {
   const settings = await refreshNotificationSounds(token);
@@ -51,6 +58,7 @@ export async function registerPush(token: string): Promise<void> {
     return;
   }
   if (Platform.OS === "web" || !Device.isDevice) return;
+  const Notifications = await loadExpoNotifications();
   if (Platform.OS === "android") {
     const tone = notificationTones.find((item) => item.key === activeTone) ?? notificationTones[0];
     await Notifications.setNotificationChannelAsync(notificationChannelId(tone.key), {
@@ -127,5 +135,6 @@ export async function showOrderNotification(title: string, body: string, data: R
     }
     return;
   }
+  const Notifications = await loadExpoNotifications();
   await Notifications.scheduleNotificationAsync({ content: { title, body, data, sound: customTone?.data_uri ?? tone.file }, trigger: null });
 }
