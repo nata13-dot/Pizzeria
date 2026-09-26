@@ -1,3 +1,4 @@
+import { flavorSelectionExtra } from "../../flavorPricing";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
@@ -108,7 +109,7 @@ export function PosScreen({ token, isAdministrator, canOverrideStock }: { token:
   function addProduct(product: Product, variant: Variant, flavorIds: number[], modifierIds: number[], itemNotes: string) {
     cartAddedFeedback();
     const flavors = product.flavors.filter((flavor) => flavorIds.includes(flavor.id)); const rules = variant.modifier_rules.filter((rule) => modifierIds.includes(rule.modifier_id));
-    const flavorExtra = flavorIds.length > 1 ? product.type === "pizza" ? Number(settings.half_and_half_extra) : product.type === "wings" ? Number(settings.additional_wing_flavor_extra) * (flavorIds.length - 1) : 0 : 0;
+    const flavorExtra = flavorSelectionExtra(product.type, flavorIds, settings);
     const modifierExtra = rules.reduce((sum, rule) => sum + Number(rule.price_override ?? rule.modifier.price), 0); const key = `product-${variant.id}-${[...flavorIds].sort().join(".")}-${[...modifierIds].sort().join(".")}-${itemNotes}`;
     setCart((current) => { const found = current.find((line) => line.key === key); return found ? current.map((line) => line.key === key ? { ...line, quantity: line.quantity + 1 } : line) : [...current, { key, kind: "product", variantId: variant.id, name: `${product.name} · ${variant.name}`, unitPrice: Number(variant.price) + flavorExtra + modifierExtra, quantity: 1, flavorIds, flavorNames: flavors.map((flavor) => flavor.name), modifierIds, modifierNames: rules.map((rule) => modifierDisplayName(rule.modifier)), notes: itemNotes.trim() }]; });
   }
@@ -119,13 +120,7 @@ export function PosScreen({ token, isAdministrator, canOverrideStock }: { token:
       const product = products.find((entry) => entry.variants.some((variant) => variant.id === comboItem?.product_variant_id));
       const variant = product?.variants.find((entry) => entry.id === comboItem?.product_variant_id);
       if (!comboItem || !product || !variant) return totalExtra;
-      const flavorExtra = selection.flavor_ids.length > 1
-        ? product.type === "pizza"
-          ? Number(settings.half_and_half_extra)
-          : product.type === "wings"
-            ? Number(settings.additional_wing_flavor_extra) * (selection.flavor_ids.length - 1)
-            : 0
-        : 0;
+      const flavorExtra = flavorSelectionExtra(product.type, selection.flavor_ids, settings);
       const modifierExtra = variant.modifier_rules
         .filter((rule) => selection.modifier_ids.includes(rule.modifier_id))
         .reduce((sum, rule) => sum + Number(rule.price_override ?? rule.modifier.price), 0);
@@ -206,7 +201,7 @@ function ProductCard({ product, promotions, products, settings, onAdd, onAddComb
     const stuffedCrustRules = variant.modifier_rules.filter((rule) => rule.modifier.type === "stuffed_crust");
     const otherModifierRules = variant.modifier_rules.filter((rule) => rule.modifier.type !== "stuffed_crust");
     const modifierExtra = variant.modifier_rules.filter((rule) => selectedModifiers.includes(rule.modifier_id)).reduce((sum, rule) => sum + Number(rule.price_override ?? rule.modifier.price), 0);
-    const flavorExtra = selectedFlavors.length > 1 ? Number(settings.half_and_half_extra) : 0;
+    const flavorExtra = flavorSelectionExtra(product.type, selectedFlavors, settings);
     const configuredPrice = Number(variant.price) + modifierExtra + flavorExtra;
     const needsFlavor = product.flavors.length > 0 && (variant.required_flavors ? selectedFlavors.length !== variant.required_flavors : !selectedFlavors.length);
     return <View style={[styles.variant,compactVariants&&styles.selectedVariant]} key={variant.id}>
