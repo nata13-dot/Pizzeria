@@ -54,16 +54,20 @@ export function PosScreen({ token, isAdministrator, canOverrideStock }: { token:
   const [zonePickerOpen, setZonePickerOpen] = useState(false);
   const [salesChannel, setSalesChannel] = useState("local"); const [pickup, setPickup] = useState(false); const [recipient, setRecipient] = useState(""); const [phone, setPhone] = useState(""); const [address, setAddress] = useState(""); const [references, setReferences] = useState(""); const [mapUrl, setMapUrl] = useState(""); const [zone, setZone] = useState("");
   const [payment, setPayment] = useState("cash"); const [cashAmount, setCashAmount] = useState(""); const [collectOnDelivery, setCollectOnDelivery] = useState(false); const [scheduledAt, setScheduledAt] = useState(""); const [notes, setNotes] = useState(""); const [idempotencyKey, setIdempotencyKey] = useState(newKey); const [pendingKitchen, setPendingKitchen] = useState<PendingKitchen | null>(null); const [lastOrder, setLastOrder] = useState<Order | null>(null); const [message, setMessage] = useState(""); const [busy, setBusy] = useState(true);
+  const [catalogWarning, setCatalogWarning] = useState("");
   const sending = useRef(false);
 
   const load = useCallback(async (forceRefresh = false) => {
-    setBusy(true); setMessage("");
+    setBusy(true); setMessage(""); setCatalogWarning("");
     const customersRequest = api<CustomerPage>("/customers?active=1", token)
       .then((customerPage) => setCustomers(customerPage.data))
       .catch((error) => setMessage((current) => current || (error as Error).message));
     try {
       const [nextProducts, nextCategories, nextCombos, nextSettings] = await Promise.all([
-        cachedApi<Product[]>("/pos/catalog", token, { forceRefresh }), cachedApi<Category[]>("/product-categories", token, { forceRefresh }), cachedApi<Combo[]>("/combos", token, { forceRefresh }), cachedApi<OperationalSettings>("/operational-settings", token, { forceRefresh }),
+        cachedApi<Product[]>("/pos/catalog", token, { forceRefresh }), cachedApi<Category[]>("/product-categories", token, { forceRefresh }), cachedApi<Combo[]>("/combos", token, { forceRefresh }).catch((error: unknown) => {
+          setCatalogWarning(`No se pudieron cargar los paquetes y promociones. Los productos individuales siguen disponibles. ${error instanceof Error ? error.message : "Pulsa Actualizar para reintentar."}`);
+          return [] as Combo[];
+        }), cachedApi<OperationalSettings>("/operational-settings", token, { forceRefresh }),
       ]);
       if (__DEV__) {
         const serialized = JSON.stringify(nextProducts);
@@ -159,6 +163,7 @@ export function PosScreen({ token, isAdministrator, canOverrideStock }: { token:
     {(!compact || !showMobileCart) && <View style={styles.catalog}>
       {compact && <Pressable accessibilityRole="button" onPress={() => setShowMobileCart(true)} style={styles.mobileCartButton}><View><Text style={styles.mobileCartTitle}>Ver pedido y finalizar</Text><Text style={styles.mobileCartDetail}>{cart.reduce((sum, line) => sum + line.quantity, 0)} producto(s)</Text></View><Text style={styles.mobileCartTotal}>${total.toFixed(2)} ›</Text></Pressable>}
       <View style={styles.card}><View style={styles.inline}><TextInput style={[styles.input, styles.flex]} value={search} onChangeText={setSearch} placeholder="Buscar producto o tamaño" /><Pressable style={styles.outlineButton} onPress={() => load(true)}><Text style={styles.outlineText}>Actualizar</Text></Pressable></View><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.actions}><Pressable style={[styles.choice, categoryId === null && styles.choiceActive]} onPress={() => setCategoryId(null)}><Text>Todo</Text></Pressable>{categories.map((category) => <Pressable key={category.id} style={[styles.choice, categoryId === category.id && styles.choiceActive]} onPress={() => setCategoryId(category.id)}><Text>{category.name}</Text></Pressable>)}</ScrollView></View>
+      {!!catalogWarning && <Text accessibilityRole="alert" style={styles.muted}>{catalogWarning}</Text>}
       {!visibleProducts.length ? <View style={styles.emptyState}><Text style={styles.emptyIcon}>⌕</Text><Text style={styles.rowTitle}>No encontramos productos</Text><Text style={styles.muted}>Cambia la categoría o el texto de búsqueda.</Text></View> : compact ? <View style={styles.productList}>{visibleProducts.map((product) => <ProductCard key={product.id} product={product} promotions={promotions.filter((promo) => promo.items[0].variant.product.id === product.id)} products={products} settings={settings} onAdd={addProduct} onAddCombo={addCombo} />)}</View> : <View style={styles.productColumns}>{[0,1].map((column) => <View key={column} style={styles.productColumn}>{visibleProducts.filter((_product,index)=>index%2===column).map((product) => <ProductCard key={product.id} product={product} promotions={promotions.filter((promo) => promo.items[0].variant.product.id === product.id)} products={products} settings={settings} onAdd={addProduct} onAddCombo={addCombo} />)}</View>)}</View>}
       {!!packages.length && <View style={styles.card}><Text style={styles.title}>Paquetes</Text>{packages.map((combo) => <ComboCard key={combo.id} combo={combo} products={products} settings={settings} onAdd={addCombo} />)}</View>}
     </View>}
