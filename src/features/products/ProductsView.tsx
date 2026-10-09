@@ -31,12 +31,15 @@ export function ComboManager({ data, token }: { data: any[]; token: string }) {
   const [kind, setKind] = useState<"package" | "promotion">("package");
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [comboImage, setComboImage] = useState("");
   const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
   const [quantity, setQuantity] = useState("1");
   const [items, setItems] = useState<any[]>([]);
   const [combos, setCombos] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [editingImageId, setEditingImageId] = useState<number | null>(null);
+  const [editingImage, setEditingImage] = useState("");
   const comboRows = Array.isArray(combos) ? combos : [];
   const load = () => api<any[]>("/combos", token).then(setCombos).catch((error) => setMessage((error as Error).message));
   useEffect(() => { load(); }, [token]);
@@ -54,8 +57,8 @@ export function ComboManager({ data, token }: { data: any[]; token: string }) {
     setBusy(true); setMessage("");
     try {
       const payloadItems = items.flatMap(({ label: _label, ...item }) => kind === "package" && Number.isInteger(Number(item.quantity)) && Number(item.quantity) > 1 ? Array.from({ length: Number(item.quantity) }, () => ({ ...item, quantity: 1 })) : item);
-      await api("/combos", token, { method: "POST", body: JSON.stringify({ name: name.trim(), price: Number(price), items: payloadItems }) });
-      setName(""); setPrice(""); setItems([]); setMessage(kind === "promotion" ? "Promoción creada." : "Paquete creado."); await load();
+      await api("/combos", token, { method: "POST", body: JSON.stringify({ name: name.trim(), price: Number(price), image_data_uri: comboImage || null, items: payloadItems }) });
+      setName(""); setPrice(""); setComboImage(""); setItems([]); setMessage(kind === "promotion" ? "Promoción creada." : "Paquete creado."); await load();
     } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
   }
   async function remove(combo: any) {
@@ -63,6 +66,13 @@ export function ComboManager({ data, token }: { data: any[]; token: string }) {
     setBusy(true); setMessage("");
     try { await api(`/combos/${combo.id}`, token, { method: "DELETE" }); setMessage("Paquete o promoción eliminado."); await load(); }
     catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
+  }
+  async function saveImage(combo: any) {
+    setBusy(true); setMessage("");
+    try {
+      await api(`/combos/${combo.id}`, token, { method: "PATCH", body: JSON.stringify({ image_data_uri: editingImage || null }) });
+      setEditingImageId(null); setEditingImage(""); setMessage(editingImage ? "Imagen del paquete actualizada." : "Imagen del paquete eliminada."); await load();
+    } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
   }
   return <View style={s.formCard}>
     <ThemedText style={s.sectionTitle}>Paquetes y promociones</ThemedText>
@@ -77,6 +87,7 @@ export function ComboManager({ data, token }: { data: any[]; token: string }) {
           <TextInput style={[s.input, s.flexField]} placeholder={kind === "promotion" ? "Ej. 2 pizzas medianas" : "Nombre del paquete"} value={name} onChangeText={setName}/>
           <TextInput style={[s.input, s.flexField]} placeholder="Precio total" value={price} onChangeText={setPrice} keyboardType="decimal-pad"/>
         </View>
+        <LogoPicker value={comboImage} onChange={setComboImage} onError={()=>setMessage("No pudimos cargar la imagen. Revisa el archivo e intenta nuevamente.")} emptyLabel="Seleccionar o arrastrar imagen del paquete" changeLabel="Cambiar imagen del paquete" />
         <ThemedText style={s.label}>{kind === "promotion" ? "Producto de la promoción" : "Agregar producto al paquete"}</ThemedText>
         <View style={s.types}>{variants.map((variant: any) => <Pressable key={variant.id} onPress={() => setSelectedVariantId(variant.id)} style={[s.type, selectedVariantId === variant.id && s.typeActive]}><ThemedText>{variant.product.name} · {variant.name}</ThemedText></Pressable>)}</View>
         <View style={s.inlineFields}>
@@ -94,7 +105,12 @@ export function ComboManager({ data, token }: { data: any[]; token: string }) {
       <View style={[s.comboActive, compact && s.comboActiveCompact]}>
         <View style={s.stepHeading}><ThemedText style={s.productName}>Activos</ThemedText><ThemedText style={s.badge}>{comboRows.length}</ThemedText></View>
         {!comboRows.length && <ThemedText style={s.muted}>Aún no hay paquetes o promociones.</ThemedText>}
-        <View style={s.comboGrid}>{comboRows.map((combo: any) => <View key={combo.id} style={s.comboCard}><View style={s.rowText}><ThemedText style={s.productName}>{combo.name}</ThemedText><ThemedText style={s.muted}>${Number(combo.price).toFixed(2)} · {combo.items.length === 1 && Number(combo.items[0].quantity) > 1 ? "Promoción" : "Paquete"}</ThemedText></View><Pressable accessibilityLabel={`Eliminar ${combo.name}`} style={s.inlineTextAction} disabled={busy} onPress={() => remove(combo)}><ThemedText style={s.remove}>Eliminar</ThemedText></Pressable></View>)}</View>
+        <View style={s.comboGrid}>{comboRows.map((combo: any) => <View key={combo.id} style={s.comboCard}>
+          {combo.image_data_uri ? <Image source={{uri: combo.image_data_uri}} style={s.comboThumbnail}/> : <View style={s.comboThumbnailPlaceholder}><ThemedText>🍕</ThemedText></View>}
+          <View style={s.rowText}><ThemedText style={s.productName}>{combo.name}</ThemedText><ThemedText style={s.muted}>${Number(combo.price).toFixed(2)} · {combo.items.length === 1 && Number(combo.items[0].quantity) > 1 ? "Promoción" : "Paquete"}</ThemedText></View>
+          <View style={s.compactActions}><Pressable accessibilityLabel={`${combo.image_data_uri ? "Cambiar" : "Agregar"} imagen de ${combo.name}`} style={s.inlineTextAction} disabled={busy} onPress={() => { setEditingImageId(combo.id); setEditingImage(combo.image_data_uri ?? ""); }}><ThemedText style={s.link}>{combo.image_data_uri ? "Cambiar imagen" : "Agregar imagen"}</ThemedText></Pressable><Pressable accessibilityLabel={`Eliminar ${combo.name}`} style={s.inlineTextAction} disabled={busy} onPress={() => remove(combo)}><ThemedText style={s.remove}>Eliminar</ThemedText></Pressable></View>
+          {editingImageId === combo.id && <View style={s.comboImageEditor}><LogoPicker value={editingImage} onChange={setEditingImage} onError={()=>setMessage("No pudimos cargar la imagen. Revisa el archivo e intenta nuevamente.")} emptyLabel="Seleccionar imagen" changeLabel="Cambiar imagen"/><View style={s.compactActions}><Pressable disabled={busy} onPress={()=>saveImage(combo)} style={s.secondaryButton}><ThemedText style={s.secondaryText}>Guardar imagen</ThemedText></Pressable><Pressable disabled={busy} onPress={()=>{setEditingImageId(null);setEditingImage("");}} style={s.inlineTextAction}><ThemedText style={s.muted}>Cancelar</ThemedText></Pressable></View></View>}
+        </View>)}</View>
       </View>
     </View>
   </View>;
