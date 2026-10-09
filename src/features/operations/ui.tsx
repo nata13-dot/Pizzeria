@@ -112,6 +112,35 @@ export function Tabs({
   </View>;
 }
 
+export function WorkflowSteps({
+  items,
+  current,
+}: {
+  items: { key: string; label: string; detail?: string }[];
+  current: string;
+}) {
+  const ops = useOpsStyles();
+  const currentIndex = Math.max(0, items.findIndex((item) => item.key === current));
+  return <View accessibilityRole="list" style={ops.workflowSteps}>
+    {items.map((item, index) => {
+      const active = index === currentIndex;
+      const complete = index < currentIndex;
+      return <View
+        key={item.key}
+        style={[ops.workflowStep, active && ops.workflowStepActive]}
+      >
+        <View style={[ops.workflowNumber, (active || complete) && ops.workflowNumberActive]}>
+          <ThemedText style={[ops.workflowNumberText, (active || complete) && ops.workflowNumberTextActive]}>{complete ? "✓" : index + 1}</ThemedText>
+        </View>
+        <View style={ops.workflowCopy}>
+          <ThemedText style={[ops.workflowLabel, active && ops.workflowLabelActive]}>{item.label}</ThemedText>
+          {!!item.detail && active && <ThemedText style={ops.workflowDetail}>{item.detail}</ThemedText>}
+        </View>
+      </View>;
+    })}
+  </View>;
+}
+
 export function Section({ title, subtitle, children, compact = false }: { title: string; subtitle?: string; children: ReactNode; compact?: boolean }) {
   const ops=useOpsStyles();
   return <View style={[ops.section, compact && ops.sectionCompact]}>
@@ -212,4 +241,15 @@ export const createOpsStyles = (theme:Theme)=>StyleSheet.create({
   metricsMobile: { flexDirection: "column" },
   metric: { ...theme.shadows.surface, backgroundColor: theme.colors.surfaceRaised, borderColor: theme.colors.border, borderRadius: theme.radius.card, borderWidth: 1, flexGrow: 1, gap: 4, minWidth: 130, padding: 16 },
   metricValue: { color: theme.colors.primary, fontSize: 22 * theme.fontScale, fontWeight: "900" },
+  workflowSteps: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  workflowStep: { alignItems: "center", backgroundColor: theme.colors.surfaceMuted, borderColor: "transparent", borderRadius: theme.radius.card, borderWidth: 1, flexDirection: "row", flexGrow: 1, gap: 9, minHeight: theme.control.minTouch, minWidth: 150, paddingHorizontal: 12, paddingVertical: 9 },
+  workflowStepActive: { backgroundColor: theme.colors.primarySurface, borderColor: theme.colors.primary },
+  workflowNumber: { alignItems: "center", backgroundColor: theme.colors.surfaceRaised, borderRadius: 16, height: 32, justifyContent: "center", width: 32 },
+  workflowNumberActive: { backgroundColor: theme.colors.primary },
+  workflowNumberText: { color: theme.colors.textMuted, fontWeight: "900" },
+  workflowNumberTextActive: { color: theme.colors.primaryText },
+  workflowCopy: { flex: 1, gap: 2, minWidth: 0 },
+  workflowLabel: { color: theme.colors.textMuted, fontWeight: "800" },
+  workflowLabelActive: { color: theme.colors.primary },
+  workflowDetail: { color: theme.colors.textMuted, fontSize: 12 * theme.fontScale, lineHeight: 16 * theme.fontScale },
 });

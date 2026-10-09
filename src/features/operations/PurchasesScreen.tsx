@@ -8,7 +8,8 @@ import { operationError, decimalInput, moneyInput, validDate, required } from ".
 import { money, moneyDivide, moneySum } from "../../money";
 import { useWorkField, useWorkGuard } from "../../work/WorkProvider";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useResponsiveLayout } from "../../layout/responsive";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
 import { api, ApiError } from "../../api";
 import type {
@@ -34,6 +35,7 @@ import {
   quantityText,
   Section,
   Tabs,
+  WorkflowSteps,
 } from "./ui";
 
 type PurchaseTab = "register" | "history";
@@ -69,8 +71,7 @@ function paymentSourceLabel(source: PaymentSource): string {
 
 export function PurchasesScreen({ token, isAdministrator }: { token: string; isAdministrator: boolean }) {
   const ops=useOpsStyles();
-  const { width } = useWindowDimensions();
-  const compact = width < 980;
+  const { compact, mobile } = useResponsiveLayout();
   const [tab, setTab] = useState<PurchaseTab>("register");
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -340,8 +341,10 @@ export function PurchasesScreen({ token, isAdministrator }: { token: string; isA
 
   if (loading) return <LoadingState text="Cargando compras y proveedores..." />;
 
-  return <View style={ops.screen}>
-    <View style={ops.toolbar}>
+  const purchaseStep = reviewing ? "review" : selectedPresentation ? "details" : ingredientId ? "presentation" : "ingredient";
+
+  return <View style={[ops.screen, mobile && ops.screenMobile]}>
+    <View style={[ops.toolbar, mobile && ops.toolbarMobile]}>
       <Tabs
         active={tab}
         items={[{ key: "register", label: "Registrar compra" }, { key: "history", label: `Historial (${purchases.length})` }]}
@@ -352,6 +355,12 @@ export function PurchasesScreen({ token, isAdministrator }: { token: string; isA
     <Feedback error={error} message={message} />
 
     {tab === "register" && <>
+      <WorkflowSteps current={purchaseStep} items={[
+        { key: "ingredient", label: "Elige el insumo", detail: "Busca por nombre o SKU." },
+        { key: "presentation", label: "Elige cómo lo compras", detail: "Selecciona la presentación exacta." },
+        { key: "details", label: "Captura cantidad y costo", detail: "Agrega lote y caducidad si los conoces." },
+        { key: "review", label: "Revisa y registra", detail: "Confirma lo que entrará al inventario." },
+      ]}/>
       {isAdministrator && <Section title="Alta rápida de proveedor">
         <View style={[ops.inline, compact && ops.inlineCompact]}>
           <TextInput editable={!saving && !action.busy} style={[ops.input, ops.fieldGrow]} {...form.field("supplier_name")} required value={supplierName} onChangeText={setSupplierName} placeholder="Nombre del proveedor" />
@@ -386,16 +395,19 @@ export function PurchasesScreen({ token, isAdministrator }: { token: string; isA
         {selectedPresentation && <View style={ops.noticeBox}>
           <ThemedText style={ops.notice}>Conversión: 1 {selectedPresentation.name} = {quantityText(selectedPresentation.base_quantity)} {selectedPresentation.ingredient.base_unit?.symbol ?? "u"} de {selectedPresentation.ingredient.name}.</ThemedText>
         </View>}
-        <View style={[ops.inline, compact && ops.inlineCompact]}>
-          <TextInput editable={!saving && !action.busy} style={[ops.input, ops.fieldGrow]} {...form.field("quantity")} required value={presentationQuantity} onChangeText={setPresentationQuantity} placeholder="Cantidad de presentaciones" keyboardType="decimal-pad" />
-          <TextInput editable={!saving && !action.busy} style={[ops.input, ops.fieldGrow]} {...form.field("cost")} required helperText="Es el costo total de todas las presentaciones del renglón. Usa punto o coma decimal, sin separadores de miles." value={lineCost} onChangeText={setLineCost} placeholder="Costo total del renglón" keyboardType="decimal-pad" />
-        </View>
-        <View style={[ops.inline, compact && ops.inlineCompact]}>
-          <TextInput editable={!saving && !action.busy} style={[ops.input, ops.fieldGrow]} value={lineLot} onChangeText={setLineLot} placeholder="Código de lote opcional" autoCapitalize="characters" />
-          <TextInput editable={!saving && !action.busy} style={[ops.input, ops.fieldGrow]} {...form.field("expiry")} value={lineExpiry} onChangeText={setLineExpiry} placeholder="Caducidad AAAA-MM-DD" autoCapitalize="none" />
-        </View>
-        {selectedPresentation && Number.isFinite(decimalInput(presentationQuantity)) && decimalInput(presentationQuantity) > 0 && <ThemedText style={ops.notice}>{quantityText(decimalInput(presentationQuantity))} × {quantityText(selectedPresentation.quantity)} {selectedPresentation.equivalent_unit?.symbol ?? "u"} = {quantityText(numberValue(selectedPresentation.base_quantity) * decimalInput(presentationQuantity))} {selectedPresentation.ingredient.base_unit?.symbol ?? "u"} al inventario.</ThemedText>}
-        <ActionButton variant="secondary" label={editingLine === null ? "Agregar renglón" : "Actualizar renglón"} disabled={saving || action.busy} onPress={addLine}/>
+        {selectedPresentation ? <View style={ops.insetCard}>
+          <ThemedText style={ops.subtitle}>Cantidad, costo y seguimiento</ThemedText>
+          <View style={[ops.inline, compact && ops.inlineCompact]}>
+            <TextInput editable={!saving && !action.busy} style={[ops.input, ops.fieldGrow]} {...form.field("quantity")} required value={presentationQuantity} onChangeText={setPresentationQuantity} placeholder="Cantidad de presentaciones" keyboardType="decimal-pad" />
+            <TextInput editable={!saving && !action.busy} style={[ops.input, ops.fieldGrow]} {...form.field("cost")} required helperText="Es el costo total de todas las presentaciones del renglón. Usa punto o coma decimal, sin separadores de miles." value={lineCost} onChangeText={setLineCost} placeholder="Costo total del renglón" keyboardType="decimal-pad" />
+          </View>
+          <View style={[ops.inline, compact && ops.inlineCompact]}>
+            <TextInput editable={!saving && !action.busy} style={[ops.input, ops.fieldGrow]} value={lineLot} onChangeText={setLineLot} placeholder="Código de lote opcional" autoCapitalize="characters" />
+            <TextInput editable={!saving && !action.busy} style={[ops.input, ops.fieldGrow]} {...form.field("expiry")} value={lineExpiry} onChangeText={setLineExpiry} placeholder="Caducidad AAAA-MM-DD" autoCapitalize="none" />
+          </View>
+          {Number.isFinite(decimalInput(presentationQuantity)) && decimalInput(presentationQuantity) > 0 && <ThemedText style={ops.notice}>{quantityText(decimalInput(presentationQuantity))} × {quantityText(selectedPresentation.quantity)} {selectedPresentation.equivalent_unit?.symbol ?? "u"} = {quantityText(numberValue(selectedPresentation.base_quantity) * decimalInput(presentationQuantity))} {selectedPresentation.ingredient.base_unit?.symbol ?? "u"} al inventario.</ThemedText>}
+          <ActionButton variant="secondary" label={editingLine === null ? "Agregar a la compra" : "Actualizar renglón"} disabled={saving || action.busy} onPress={addLine}/>
+        </View> : <ThemedText style={ops.muted}>Selecciona un insumo y su presentación para capturar cantidad, costo, lote y caducidad.</ThemedText>}
         {!!lines.length && <View style={ops.insetCard}>
           {lines.map((line, index) => <View style={ops.card} key={`${line.ingredient_presentation_id}-${line.lot_code ?? "sin-lote"}-${index}`}>
             <View style={ops.row}>

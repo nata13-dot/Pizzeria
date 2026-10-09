@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { loadUi } from "./testSupport/loadUi.mjs";
 
@@ -22,6 +23,15 @@ test("responsive contract handles narrow and wide viewports without gaps", () =>
   assert.equal(responsiveSize(1440), "desktop");
 });
 
+test("inventory and purchases use the shared responsive contract", async () => {
+  for (const file of ["features/operations/InventoryScreen.tsx", "features/operations/PurchasesScreen.tsx"]) {
+    const source = await readFile(new URL(file, new URL("./", import.meta.url)), "utf8");
+    assert.match(source, /useResponsiveLayout\(\)/, file);
+    assert.doesNotMatch(source, /width\s*[<=>]/, file);
+    assert.doesNotMatch(source, /useWindowDimensions/, file);
+  }
+});
+
 test("migrated interactive primitives keep the shared touch target", () => {
   const theme = createTheme("light");
   const app = createAppStyles(theme);
@@ -36,6 +46,7 @@ test("migrated interactive primitives keep the shared touch target", () => {
     "chip de Producción": operations.chip,
     "acción destructiva de Producción": operations.dangerButton,
     "acción textual de Producción": operations.inlineTextAction,
+    "paso guiado compartido": operations.workflowStep,
   };
 
   for (const [name, style] of Object.entries(controls)) {

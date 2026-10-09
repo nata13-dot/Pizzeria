@@ -7,7 +7,8 @@ import { Pagination } from "../../components/RemoteListStatus";
 import { usePaginatedResource, useRemoteResource } from "../../hooks/useRemoteResource";
 import { useNavigationField } from "../../navigation/NavigationContext";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useResponsiveLayout } from "../../layout/responsive";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
 import { api } from "../../api";
 import type {
@@ -70,8 +71,7 @@ function batchIsExpired(batch: InventoryBatch): boolean {
 export function InventoryScreen({ token, isAdministrator }: { token: string; isAdministrator: boolean }) {
   const {theme}=useTheme();
   const ops=useOpsStyles();
-  const { width } = useWindowDimensions();
-  const compact = width < 980;
+  const { compact, mobile } = useResponsiveLayout();
   const [navigationContext,setNavigationContext]=useNavigationField("inventory",{tab:"stock" as InventoryTab,search:"",status:"" as "" | "available" | "low" | "critical" | "out",active:"1" as "1"|"0"|"",page:1,detailId:null as number|null});
   const [tab, setTab] = useState<InventoryTab>(navigationContext.tab);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
@@ -311,11 +311,11 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
     const openingStock = inputNumber(initialStock);
     const openingCost = inputNumber(initialUnitCost);
     if (!ingredientName.trim() || !baseUnitId || !Number.isFinite(minimum) || minimum < 0 || !Number.isFinite(critical) || critical < 0) {
-      setError("Completa el nombre, la unidad y límites de stock válidos.");
+      setError("Completa el nombre, la unidad y límites de existencia válidos.");
       return;
     }
     if (critical > minimum) {
-      setError("El stock crítico no puede ser mayor que el stock mínimo.");
+      setError("La existencia crítica no puede ser mayor que la existencia mínima.");
       return;
     }
     if ((shelfLife !== null && (!Number.isInteger(shelfLife) || shelfLife < 0)) || !Number.isInteger(expiryDays) || expiryDays < 0) {
@@ -458,7 +458,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
     }
     const isRemoval = selectedAdjustmentReason.removal || adjustmentDirection === "out";
     if (!isRemoval && batchIsExpired(selectedAdjustmentBatch)) {
-      setError("No se puede agregar existencia a un lote caducado. Registra la entrada en un lote vigente para que el stock sea utilizable.");
+      setError("No se puede agregar existencia a un lote caducado. Registra la entrada en un lote vigente para que la existencia sea utilizable.");
       return;
     }
     if (isRemoval && quantity > numberValue(selectedAdjustmentBatch.available_quantity) + 0.00001) {
@@ -489,16 +489,16 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
     }
   }
 
-  return <View style={ops.screen}>
-    <View style={ops.toolbar}>
+  return <View style={[ops.screen, mobile && ops.screenMobile]}>
+    <View style={[ops.toolbar, mobile && ops.toolbarMobile]}>
       <Tabs
         active={tab}
         items={[
           { key: "stock", label: `Existencias (${inventory.data?.total ?? "…"})` },
           { key: "batches", label: `Lotes (${sources.batches.loaded ? batchTotal : "…"})` },
-          { key: "alerts", label: `Alertas (${sources.alerts.loaded ? alerts.length : "…"})` },
-          { key: "movements", label: "Movimientos" },
-          ...(isAdministrator ? [{ key: "admin", label: "Administrar" }] : []),
+          { key: "alerts", label: `Qué me falta · Alertas (${sources.alerts.loaded ? alerts.length : "…"})` },
+          { key: "movements", label: "Qué cambió" },
+          ...(isAdministrator ? [{ key: "admin", label: "Configuración" }] : []),
         ]}
         onChange={(key) => setTab(key as InventoryTab)}
       />
@@ -582,7 +582,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
     </Section>}
 
     {tab === "alerts" && <Section title="Alertas activas" subtitle="Prioriza faltantes, niveles críticos y lotes próximos a caducar.">
-      {!alerts.length ? (ready("alerts") ? <EmptyState text="No hay alertas activas de stock o caducidad." /> : null) : alerts.map((alert) => <View style={ops.insetCard} key={alert.id}>
+      {!alerts.length ? (ready("alerts") ? <EmptyState text="No hay alertas activas de existencia o caducidad." /> : null) : alerts.map((alert) => <View style={ops.insetCard} key={alert.id}>
         <View style={ops.row}>
           <ThemedText style={alert.severity === "critical" ? ops.statusDanger : ops.statusWarning}>{{low_stock:"EXISTENCIA BAJA",critical_stock:"AGOTADO O CRÍTICO",expiring:"PRÓXIMO A CADUCAR",expired:"CADUCADO",insufficient_dough:"INSUMO INSUFICIENTE"}[alert.type] ?? "REVISAR INVENTARIO"}</ThemedText>
           <ThemedText style={ops.muted}>{dateText(alert.created_at, true)}</ThemedText>
@@ -624,8 +624,8 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
         <View style={ops.chips}><Pressable onPress={() => setIngredientTypeId(null)} style={[ops.chip, ingredientTypeId === null && ops.chipActive]}><ThemedText>Sin tipo</ThemedText></Pressable>{activeTypes.map((type) => <Pressable key={type.id} onPress={() => setIngredientTypeId(type.id)} style={[ops.chip, ingredientTypeId === type.id && ops.chipActive]}><ThemedText>{type.name}</ThemedText></Pressable>)}</View>
         <ThemedText style={ops.subtitle}>Control de existencias</ThemedText>
         <View style={[ops.inline, compact && ops.inlineCompact]}>
-          <TextInput style={[ops.input, ops.fieldGrow]} value={minimumStock} onChangeText={setMinimumStock} placeholder="Stock mínimo" keyboardType="decimal-pad" />
-          <TextInput style={[ops.input, ops.fieldGrow]} value={criticalStock} onChangeText={setCriticalStock} placeholder="Stock crítico" keyboardType="decimal-pad" />
+          <TextInput style={[ops.input, ops.fieldGrow]} value={minimumStock} onChangeText={setMinimumStock} placeholder="Existencia mínima" keyboardType="decimal-pad" />
+          <TextInput style={[ops.input, ops.fieldGrow]} value={criticalStock} onChangeText={setCriticalStock} placeholder="Existencia crítica" keyboardType="decimal-pad" />
           <TextInput style={[ops.input, ops.fieldGrow]} value={expiryAlertDays} onChangeText={setExpiryAlertDays} placeholder="Alerta (días)" keyboardType="number-pad" />
           <TextInput style={[ops.input, ops.fieldGrow]} value={shelfLifeDays} onChangeText={setShelfLifeDays} placeholder="Vida útil (días)" keyboardType="number-pad" />
         </View>

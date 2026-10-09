@@ -16,6 +16,7 @@ import { useActionGate } from '../../forms/useActionGate';
 import { useFormErrors } from '../../forms/useFormErrors';
 import { decimalInput, operationError, required } from '../../forms/validation';
 import type { Ingredient } from '../operations/types';
+import { WorkflowSteps } from '../operations/ui';
 
 type Flavor = { id: number; name: string; active: boolean };
 type Slot = { id: number; product_flavor_id: number | null; active: boolean; name: string };
@@ -128,6 +129,12 @@ export function SaleRecipes({ token }: { token: string }) {
       {draft.view !== 'list' && <View style={styles.panel}>
         <ActionButton variant="secondary" label="Ver listado (conservar cambios)" disabled={gate.busy} onPress={() => update({ view: 'list' })} />
         <ThemedText style={styles.title}>{draft.id ? 'Editar receta de venta' : draft.source ? 'Duplicar receta de venta' : 'Crear receta de venta'}</ThemedText>
+        <WorkflowSteps current={draft.view === 'review' ? 'review' : draft.rows.length ? 'ingredients' : draft.destination ? 'details' : 'destination'} items={[
+          { key: 'destination', label: 'Producto y tamaño', detail: 'Elige dónde se utilizará la receta.' },
+          { key: 'details', label: 'Nombre y sabor', detail: 'Identifica claramente esta receta.' },
+          { key: 'ingredients', label: 'Ingredientes', detail: 'Agrega cantidades en su unidad base.' },
+          { key: 'review', label: 'Revisión', detail: 'Confirma el destino y las cantidades.' },
+        ]}/>
         {!!draft.source && <ThemedText>Copiada de: {draft.source}. Ajusta cantidades para el nuevo destino.</ThemedText>}
         <ThemedText style={styles.heading}>{destinationLabel(draft.destination, draft.flavor)}</ThemedText>
         {!!draft.id && <ThemedText>El destino de esta edición está fijo. Para otro tamaño o sabor, usa Duplicar receta desde el listado.</ThemedText>}

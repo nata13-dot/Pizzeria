@@ -34,6 +34,7 @@ import {
   quantityText,
   Section,
   Tabs,
+  WorkflowSteps,
 } from "./ui";
 
 type ProductionTab = "produce" | "recipes" | "batches";
@@ -393,6 +394,11 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
     <Feedback error={error} message={message} />
 
     {tab === "produce" && <Section title="Registrar producción" compact={mobile}>
+      <WorkflowSteps current={!selectedRecipe ? "recipe" : !validMultiplier ? "quantity" : "review"} items={[
+        { key: "recipe", label: "Elige la preparación", detail: "Selecciona una receta activa." },
+        { key: "quantity", label: "Indica las tandas", detail: "Calcularemos consumo, salida y caducidad." },
+        { key: "review", label: "Revisa y produce", detail: "Confirma existencias y cantidades." },
+      ]}/>
       <ThemedText style={ops.label}>Receta activa</ThemedText>
       <TextInput label="Buscar preparación" value={productionDirectory.search} maxLength={100} onChangeText={productionDirectory.setSearch} style={ops.input}/>
       <RemoteListStatus {...productionDirectory} count={productionDirectory.items.length} emptyText="No hay recetas activas. Solicita su configuración antes de producir." onRetry={productionDirectory.reload}/>
@@ -442,6 +448,11 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
 
     {tab === "recipes" && <>
       {isAdministrator && <Section title={editingRecipeId ? "Editar receta de producción" : "Nueva receta de producción"} compact={mobile}>
+        <WorkflowSteps current={recipeItems.length ? "inputs" : recipeOutputIngredientId ? "yield" : "output"} items={[
+          { key: "output", label: "Qué se prepara", detail: "Elige el insumo que obtendrás." },
+          { key: "yield", label: "Rendimiento", detail: "Define cantidad y vida útil por tanda." },
+          { key: "inputs", label: "Insumos", detail: "Indica qué consume cada tanda." },
+        ]}/>
         <TextInput editable={!saving && !recipeGate.busy} style={ops.input} value={recipeName} onChangeText={setRecipeName} placeholder="Nombre de la receta" required {...recipeForm.field("name")} />
         <Feedback error={recipeForm.errors.output || recipeForm.errors.items || ""}/><ThemedText style={ops.label}>¿Qué se prepara?</ThemedText>
         <View style={ops.chips}>{activeIngredients.map((ingredient) => <Pressable accessibilityRole="button" disabled={saving || recipeGate.busy} accessibilityState={{selected:recipeOutputIngredientId === ingredient.id}} key={ingredient.id} onPress={() => chooseOutput(ingredient)} style={[ops.chip, recipeOutputIngredientId === ingredient.id && ops.chipActive]}><ThemedText>{ingredient.name}</ThemedText></Pressable>)}</View>
