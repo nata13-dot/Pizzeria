@@ -10,11 +10,11 @@ const {render,fireEvent,waitFor,cleanup,act}=await import('@testing-library/reac
 const {WorkProvider,useWork,useWorkField,useWorkGuard}=await import(await loadUi('work/WorkProvider.tsx'));
 const {PosScreen}=await import(await loadUi('features/pos/PosScreen.tsx'));
 const {reconcileCart}=await import(await loadUi('work/reconcile.ts'));
-afterEach(cleanup);
+afterEach(()=>{cleanup();globalThis.__canOverrideStock=false;});
 const product={id:1,name:'Pizza prueba',type:'pizza',flavors:[],variants:[{id:1,name:'Grande',price:100,max_flavors:1,modifier_rules:[]}]};
 const settings={half_and_half_extra:10,additional_wing_flavor_extra:15,max_wing_flavors:3,delivery_zones:[],payment_methods:[{key:'cash',label:'Efectivo',active:true}]};
 let store;
-function Harness(){const work=useWork();store=work;const [screen,setScreen]=useState('pos');useEffect(()=>{void work.open({api:'test',user:1,branch:1});},[]);return React.createElement('div',null,React.createElement('button',{onClick:()=>setScreen(s=>s==='pos'?'inventory':'pos')},'Cambiar módulo'),work.ready?(screen==='pos'?React.createElement(PosScreen,{token:'t',isAdministrator:true,canOverrideStock:false}):React.createElement('div',null,'Inventario')):null);}
+function Harness(){const work=useWork();store=work;const [screen,setScreen]=useState('pos');useEffect(()=>{void work.open({api:'test',user:1,branch:1});},[]);return React.createElement('div',null,React.createElement('button',{onClick:()=>setScreen(s=>s==='pos'?'inventory':'pos')},'Cambiar módulo'),work.ready?(screen==='pos'?React.createElement(PosScreen,{token:'t',isAdministrator:true,canOverrideStock:!!globalThis.__canOverrideStock}):React.createElement('div',null,'Inventario')):null);}
 function setup(){globalThis.__workDisk=new Map();globalThis.__confirmWork=()=>false;globalThis.__p0Api=async path=>{if(path==='/pos/catalog')return [product];if(path==='/operational-settings')return settings;if(path.startsWith('/pos/customers/'))return {id:30,name:'Ana',phone:'123',active:true,addresses:[]};if(path.startsWith('/customers'))return {data:[{id:30,name:'Ana',phone:'123',addresses:[]}],current_page:1,last_page:1,total:1};return [];};}
 test('POS survives actual unmount/remount with cart, customer and delivery; discard requires consent',async()=>{
  setup();const view=render(React.createElement(WorkProvider,null,React.createElement(Harness)));
@@ -54,8 +54,21 @@ test('lost response is recovered without another POST or payment, kitchen remain
  const view=render(React.createElement(WorkProvider,null,React.createElement(Harness)));await waitFor(()=>assert.ok(view.getByText('Pedido actual')));await fillSale();fireEvent.click(view.getByText('Confirmar y enviar a cocina'));
  await waitFor(()=>assert.ok(view.getByText(/No pudimos confirmar el resultado/)));assert.ok(store.operation.key);
  fireEvent.click(view.getByText('Cambiar módulo'));fireEvent.click(view.getByText('Cambiar módulo'));
- await waitFor(()=>assert.ok(view.getByText('La orden #9 ya fue registrada.')));assert.equal(posts,1);assert.equal(kitchen,0);assert.deepEqual(store.get('pos','cart',[]),[]);
+ await waitFor(()=>assert.ok(view.getByText('Orden #9 registrada')));assert.equal(posts,1);assert.equal(kitchen,0);assert.deepEqual(store.get('pos','cart',[]),[]);
  fireEvent.click(view.getByText('Reintentar envío a cocina'));await waitFor(()=>assert.equal(kitchen,1));await waitFor(()=>assert.equal(store.operation,null));assert.equal(posts,1);
+});
+test('stock shortage recovery explains missing inventory and authorizes the same order',async()=>{
+ setup();globalThis.__confirmWork=()=>true;globalThis.__canOverrideStock=true;const catalog=globalThis.__p0Api;let posts=0,kitchen=0;
+ const {testApiError}=await import(await loadUi('testSupport/apiErrorIdentity.ts'));
+ globalThis.__p0Api=async(path,token,options)=>{
+   if(path==='/orders'){posts++;return {id:53,daily_number:1,status:'confirmed',total:270};}
+   if(path.endsWith('/send-to-kitchen')){kitchen++;if(kitchen===1)throw new testApiError(422,{code:'stock_shortage',stock_warnings:[{ingredient_id:18,name:'Queso mozzarella',shortage:400}]},'Sin inventario');assert.deepEqual(JSON.parse(options.body),{allow_stock_shortage:true});return {id:53,daily_number:1,status:'kitchen_pending',total:270};}
+   return catalog(path,token,options);
+ };
+ const view=render(React.createElement(WorkProvider,null,React.createElement(Harness)));await waitFor(()=>assert.ok(view.getByText('Pedido actual')));await fillSale();
+ fireEvent.click(view.getByText('Confirmar y enviar a cocina'));await waitFor(()=>assert.ok(view.getByText('Inventario insuficiente')));
+ assert.ok(view.getByText('Queso mozzarella: faltan 400'));assert.ok(view.getByText('Autorizar faltante y enviar a cocina'));assert.equal(posts,1);
+ fireEvent.click(view.getByText('Autorizar faltante y enviar a cocina'));await waitFor(()=>assert.equal(kitchen,2));await waitFor(()=>assert.equal(store.operation,null));assert.equal(posts,1);
 });
 test('confirmation has explicit actions, Escape cancels and focus returns to the opener',async()=>{
  const {ConfirmationDialogHost,confirmAction}=await import(await loadUi('components/ConfirmationDialog.tsx'));
