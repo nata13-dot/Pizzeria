@@ -45,11 +45,16 @@ export function FloatingTextInput({
   const errorId = `${id}-error`;
   const helpId = `${id}-help`;
   const [focused, setFocused] = useState(false);
-  const flattened = StyleSheet.flatten(style) ?? {};
+  const flattenedValue = StyleSheet.flatten(style) ?? {};
+  const flattened = (Array.isArray(flattenedValue)
+    ? Object.assign({}, ...flattenedValue.filter(Boolean))
+    : flattenedValue) as ViewStyle;
   const layoutStyle: ViewStyle = {};
+  const inputStyle = { ...flattened } as Record<string, unknown>;
   layoutKeys.forEach((key) => {
     const value = flattened[key as keyof typeof flattened];
     if (value !== undefined) (layoutStyle as Record<string, unknown>)[key] = value;
+    delete inputStyle[key];
   });
   const rawLabel = label ?? placeholder;
   const fieldLabel = required && rawLabel ? `${rawLabel.replace(/\s*\*$/, "")} (obligatorio)` : rawLabel;
@@ -68,7 +73,7 @@ export function FloatingTextInput({
       onFocus={(event) => { setFocused(true); onFocus?.(event); }}
       placeholder={fieldLabel ? undefined : placeholder}
       placeholderTextColor={theme.colors.textSubtle}
-      style={[styles.input,style, fieldLabel && styles.inputWithLabel, focused && styles.focus, !!error && styles.error]}
+      style={[styles.input,inputStyle, fieldLabel && styles.inputWithLabel, focused && styles.focus, !!error && styles.error]}
     />
     {!!helperText && <ThemedText nativeID={helpId} style={styles.helper}>{helperText}</ThemedText>}
     {!!error && <ThemedText nativeID={errorId} accessibilityRole="alert" style={[styles.helper,styles.errorText]}>Error: {error}</ThemedText>}

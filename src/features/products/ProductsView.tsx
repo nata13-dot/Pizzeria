@@ -25,16 +25,79 @@ function createOrderIdempotencyKey(): string {
   return `pos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}-${Math.random().toString(36).slice(2, 12)}`;
 }
 export function ComboManager({ data, token }: { data: any[]; token: string }) {
-  const s=useAppStyles();
-  const variants = data.flatMap((product:any)=>(product.variants??[]).map((variant:any)=>({...variant,product})));
-  const [kind,setKind]=useState<"package"|"promotion">("package"); const [name,setName]=useState(""); const [price,setPrice]=useState(""); const [selectedVariantId,setSelectedVariantId]=useState<number|null>(null); const [quantity,setQuantity]=useState("1"); const [items,setItems]=useState<any[]>([]); const [combos,setCombos]=useState<any[]>([]); const [busy,setBusy]=useState(false); const [message,setMessage]=useState("");
-  const load=()=>api<any[]>("/combos",token).then(setCombos).catch((error)=>setMessage((error as Error).message));
-  useEffect(()=>{load();},[token]);
-  useEffect(()=>{if(!selectedVariantId&&variants[0])setSelectedVariantId(variants[0].id);},[data]);
-  function addItem(){const variant=variants.find((entry:any)=>entry.id===selectedVariantId);const parsed=Number(quantity);if(!variant||parsed<=0)return;const next={product_variant_id:variant.id,quantity:parsed,flavor_required:Boolean(variant.product.flavors?.length),options:[],label:`${variant.product.name} · ${variant.name}`};setItems((current)=>kind==="promotion"?[next]:[...current,next]);setQuantity(kind==="promotion"?"2":"1");}
-  async function save(){if(!name.trim()||Number(price)<0||!items.length)return;setBusy(true);setMessage("");try{const payloadItems=items.flatMap(({label:_label,...item})=>kind==="package"&&Number.isInteger(Number(item.quantity))&&Number(item.quantity)>1?Array.from({length:Number(item.quantity)},()=>({...item,quantity:1})):item);await api("/combos",token,{method:"POST",body:JSON.stringify({name:name.trim(),price:Number(price),items:payloadItems})});setName("");setPrice("");setItems([]);setMessage(kind==="promotion"?"Promoción creada.":"Paquete creado.");await load();}catch(error){setMessage((error as Error).message);}finally{setBusy(false);}}
-  async function remove(combo:any){if(!(await confirmAction(`¿Eliminar ${combo.name}?`)))return;setBusy(true);setMessage("");try{await api(`/combos/${combo.id}`,token,{method:"DELETE"});setMessage("Paquete o promoción eliminado.");await load();}catch(error){setMessage((error as Error).message);}finally{setBusy(false);}}
-  return <View style={s.formCard}><ThemedText style={s.sectionTitle}>Paquetes y promociones</ThemedText><ThemedText style={s.formIntro}>Combina pizza, conos, alitas u otros productos. En Caja se podrá elegir el sabor de cada componente que tenga sabores.</ThemedText><View style={s.types}><Pressable onPress={()=>{setKind("package");setItems([]);setQuantity("1");}} style={[s.type,kind==="package"&&s.typeActive]}><ThemedText>Paquete de productos</ThemedText></Pressable><Pressable onPress={()=>{setKind("promotion");setItems([]);setQuantity("2");}} style={[s.type,kind==="promotion"&&s.typeActive]}><ThemedText>Promoción por piezas</ThemedText></Pressable></View><View style={s.inlineFields}><TextInput style={[s.input,s.flexField]} placeholder={kind==="promotion"?"Ej. 2 pizzas medianas":"Nombre del paquete"} value={name} onChangeText={setName}/><TextInput style={[s.input,s.flexField]} placeholder="Precio total" value={price} onChangeText={setPrice} keyboardType="decimal-pad"/></View><ThemedText style={s.label}>{kind==="promotion"?"Producto de la promoción":"Agregar producto al paquete"}</ThemedText><View style={s.types}>{variants.map((variant:any)=><Pressable key={variant.id} onPress={()=>setSelectedVariantId(variant.id)} style={[s.type,selectedVariantId===variant.id&&s.typeActive]}><ThemedText>{variant.product.name} · {variant.name}</ThemedText></Pressable>)}</View><View style={s.inlineFields}><TextInput style={[s.input,s.flexField]} placeholder="Cantidad" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad"/><Pressable disabled={!selectedVariantId||Number(quantity)<=0} onPress={addItem} style={[s.secondaryButton,(!selectedVariantId||Number(quantity)<=0)&&s.disabled]}><ThemedText style={s.secondaryText}>{kind==="promotion"?"Asignar promoción":"Agregar al paquete"}</ThemedText></Pressable></View>{items.map((item,index)=><View key={`${item.product_variant_id}-${index}`} style={s.recipeRow}><View style={s.rowText}><ThemedText style={s.label}>{item.quantity} × {item.label}</ThemedText><ThemedText style={s.muted}>{item.flavor_required?"El cliente elegirá el sabor en Caja":"Sin selección de sabor"}</ThemedText></View><Pressable style={s.inlineTextAction} onPress={()=>setItems((current)=>current.filter((_row,rowIndex)=>rowIndex!==index))}><ThemedText style={s.remove}>Quitar</ThemedText></Pressable></View>)}<Pressable disabled={busy||!name.trim()||!price||!items.length} onPress={save} style={[s.primary,(busy||!name.trim()||!price||!items.length)&&s.disabled]}><ThemedText style={s.primaryText}>{busy?"Guardando...":kind==="promotion"?"Crear promoción":"Crear paquete"}</ThemedText></Pressable>{!!message&&<ThemedText style={s.notice}>{message}</ThemedText>}{!!combos.length&&<View style={s.formStep}><ThemedText style={s.label}>Paquetes y promociones activos</ThemedText>{combos.map((combo:any)=><View key={combo.id} style={s.recipeRow}><View style={s.rowText}><ThemedText style={s.productName}>{combo.name}</ThemedText><ThemedText style={s.muted}>${Number(combo.price).toFixed(2)} · {combo.items.length===1&&Number(combo.items[0].quantity)>1?"Promoción":"Paquete"}</ThemedText></View><Pressable style={s.inlineTextAction} disabled={busy} onPress={()=>remove(combo)}><ThemedText style={s.remove}>Eliminar</ThemedText></Pressable></View>)}</View>}</View>;
+  const s = useAppStyles();
+  const { compact } = useResponsiveLayout();
+  const variants = data.flatMap((product: any) => (product.variants ?? []).map((variant: any) => ({ ...variant, product })));
+  const [kind, setKind] = useState<"package" | "promotion">("package");
+  const [name, setName] = useState("");
+  const [price, setPrice] = useState("");
+  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
+  const [quantity, setQuantity] = useState("1");
+  const [items, setItems] = useState<any[]>([]);
+  const [combos, setCombos] = useState<any[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const comboRows = Array.isArray(combos) ? combos : [];
+  const load = () => api<any[]>("/combos", token).then(setCombos).catch((error) => setMessage((error as Error).message));
+  useEffect(() => { load(); }, [token]);
+  useEffect(() => { if (!selectedVariantId && variants[0]) setSelectedVariantId(variants[0].id); }, [data]);
+  function addItem() {
+    const variant = variants.find((entry: any) => entry.id === selectedVariantId);
+    const parsed = Number(quantity);
+    if (!variant || parsed <= 0) return;
+    const next = { product_variant_id: variant.id, quantity: parsed, flavor_required: Boolean(variant.product.flavors?.length), options: [], label: `${variant.product.name} · ${variant.name}` };
+    setItems((current) => kind === "promotion" ? [next] : [...current, next]);
+    setQuantity(kind === "promotion" ? "2" : "1");
+  }
+  async function save() {
+    if (!name.trim() || Number(price) < 0 || !items.length) return;
+    setBusy(true); setMessage("");
+    try {
+      const payloadItems = items.flatMap(({ label: _label, ...item }) => kind === "package" && Number.isInteger(Number(item.quantity)) && Number(item.quantity) > 1 ? Array.from({ length: Number(item.quantity) }, () => ({ ...item, quantity: 1 })) : item);
+      await api("/combos", token, { method: "POST", body: JSON.stringify({ name: name.trim(), price: Number(price), items: payloadItems }) });
+      setName(""); setPrice(""); setItems([]); setMessage(kind === "promotion" ? "Promoción creada." : "Paquete creado."); await load();
+    } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
+  }
+  async function remove(combo: any) {
+    if (!(await confirmAction(`¿Eliminar ${combo.name}?`))) return;
+    setBusy(true); setMessage("");
+    try { await api(`/combos/${combo.id}`, token, { method: "DELETE" }); setMessage("Paquete o promoción eliminado."); await load(); }
+    catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
+  }
+  return <View style={s.formCard}>
+    <ThemedText style={s.sectionTitle}>Paquetes y promociones</ThemedText>
+    <ThemedText style={s.formIntro}>Combina productos y define un precio único. En Caja se elegirá el sabor cuando corresponda.</ThemedText>
+    <View style={[s.comboWorkspace, compact && s.comboWorkspaceCompact]}>
+      <View style={s.comboBuilder}>
+        <View style={s.types}>
+          <Pressable onPress={() => { setKind("package"); setItems([]); setQuantity("1"); }} style={[s.type, kind === "package" && s.typeActive]}><ThemedText>Paquete de productos</ThemedText></Pressable>
+          <Pressable onPress={() => { setKind("promotion"); setItems([]); setQuantity("2"); }} style={[s.type, kind === "promotion" && s.typeActive]}><ThemedText>Promoción por piezas</ThemedText></Pressable>
+        </View>
+        <View style={s.inlineFields}>
+          <TextInput style={[s.input, s.flexField]} placeholder={kind === "promotion" ? "Ej. 2 pizzas medianas" : "Nombre del paquete"} value={name} onChangeText={setName}/>
+          <TextInput style={[s.input, s.flexField]} placeholder="Precio total" value={price} onChangeText={setPrice} keyboardType="decimal-pad"/>
+        </View>
+        <ThemedText style={s.label}>{kind === "promotion" ? "Producto de la promoción" : "Agregar producto al paquete"}</ThemedText>
+        <View style={s.types}>{variants.map((variant: any) => <Pressable key={variant.id} onPress={() => setSelectedVariantId(variant.id)} style={[s.type, selectedVariantId === variant.id && s.typeActive]}><ThemedText>{variant.product.name} · {variant.name}</ThemedText></Pressable>)}</View>
+        <View style={s.inlineFields}>
+          <TextInput style={[s.input, s.flexField]} placeholder="Cantidad" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad"/>
+          <Pressable disabled={!selectedVariantId || Number(quantity) <= 0} onPress={addItem} style={[s.secondaryButton, (!selectedVariantId || Number(quantity) <= 0) && s.disabled]}><ThemedText style={s.secondaryText}>{kind === "promotion" ? "Asignar promoción" : "Agregar al paquete"}</ThemedText></Pressable>
+        </View>
+        <View style={s.comboSelection}>
+          <ThemedText style={s.label}>Contenido de {kind === "promotion" ? "la promoción" : "el paquete"} · {items.length}</ThemedText>
+          {!items.length && <ThemedText style={s.muted}>Selecciona un producto, indica la cantidad y agrégalo.</ThemedText>}
+          {items.map((item, index) => <View key={`${item.product_variant_id}-${index}`} style={s.recipeRow}><View style={s.rowText}><ThemedText style={s.label}>{item.quantity} × {item.label}</ThemedText><ThemedText style={s.muted}>{item.flavor_required ? "El cliente elegirá el sabor en Caja" : "Sin selección de sabor"}</ThemedText></View><Pressable style={s.inlineTextAction} onPress={() => setItems((current) => current.filter((_row, rowIndex) => rowIndex !== index))}><ThemedText style={s.remove}>Quitar</ThemedText></Pressable></View>)}
+        </View>
+        <Pressable disabled={busy || !name.trim() || !price || !items.length} onPress={save} style={[s.primary, (busy || !name.trim() || !price || !items.length) && s.disabled]}><ThemedText style={s.primaryText}>{busy ? "Guardando..." : kind === "promotion" ? "Crear promoción" : "Crear paquete"}</ThemedText></Pressable>
+        {!!message && <ThemedText style={s.notice}>{message}</ThemedText>}
+      </View>
+      <View style={[s.comboActive, compact && s.comboActiveCompact]}>
+        <View style={s.stepHeading}><ThemedText style={s.productName}>Activos</ThemedText><ThemedText style={s.badge}>{comboRows.length}</ThemedText></View>
+        {!comboRows.length && <ThemedText style={s.muted}>Aún no hay paquetes o promociones.</ThemedText>}
+        <View style={s.comboGrid}>{comboRows.map((combo: any) => <View key={combo.id} style={s.comboCard}><View style={s.rowText}><ThemedText style={s.productName}>{combo.name}</ThemedText><ThemedText style={s.muted}>${Number(combo.price).toFixed(2)} · {combo.items.length === 1 && Number(combo.items[0].quantity) > 1 ? "Promoción" : "Paquete"}</ThemedText></View><Pressable accessibilityLabel={`Eliminar ${combo.name}`} style={s.inlineTextAction} disabled={busy} onPress={() => remove(combo)}><ThemedText style={s.remove}>Eliminar</ThemedText></Pressable></View>)}</View>
+      </View>
+    </View>
+  </View>;
 }
 export function ProductsView({ data, token, onSaved, canConfigure }: { data: any[]; token: string; onSaved: () => void; canConfigure: boolean }) {
   const s=useAppStyles();
