@@ -53,3 +53,12 @@ test("migrated interactive primitives keep the shared touch target", () => {
     assert.ok(style.minHeight >= theme.control.minTouch, `${name} tiene ${style.minHeight ?? 0}px`);
   }
 });
+
+test("product creation uses columns on desktop and one flow on compact screens", () => {
+  const styles = createAppStyles(createTheme("light"));
+  assert.equal(styles.productCreateLayout.flexDirection, "row");
+  assert.equal(styles.productCreateLayoutCompact.flexDirection, "column");
+  assert.equal(styles.productCreateMain.minWidth, 0);
+  assert.equal(styles.productCreateAsideCompact.minWidth, 0);
+  assert.equal(styles.productCreateAsideCompact.width, "100%");
+});

@@ -136,31 +136,37 @@ export function ProductsView({ data, token, onSaved, canConfigure }: { data: any
       {canConfigure && <View style={[s.formCard, mobile && s.formCardMobile]}>
         <ThemedText style={s.sectionTitle}>Crear producto y variante</ThemedText>
         <ThemedText style={s.formIntro}>Completa la información que verá Caja y configura la primera presentación del producto.</ThemedText>
-        <View style={s.formStep}>
-          <View style={s.stepHeading}><ThemedText style={s.stepNumber}>1</ThemedText><ThemedText style={s.productName}>Información del producto</ThemedText></View>
-          <TextInput editable={!busy && !action.busy} style={s.input} placeholder="Nombre del producto" required {...productForm.field("name")} value={name} onChangeText={setName}/>
-          <TextInput editable={!busy && !action.busy} style={[s.input,s.multilineInput]} multiline maxLength={500} placeholder="Descripción corta para mostrar en Caja" {...productForm.field("description")} value={description} onChangeText={setDescription}/>
-          <Notice kind="error" message={productForm.errors.type}/>
-          <View style={s.types}>{[["pizza","Pizza"],["wings","Alitas"],["fries","Papas"],["nuggets","Nuggets"],["cone","Cono"],["beverage","Bebida"],["extra","Extra"],["other","Otro"]].map(([key,label])=><Pressable accessibilityRole="radio" accessibilityState={{checked:type===key}} key={key} onPress={()=>setType(key)} style={[s.type,type===key&&s.typeActive]}><ThemedText>{label}</ThemedText></Pressable>)}</View>
+        <View style={[s.productCreateLayout, compact && s.productCreateLayoutCompact]}>
+          <View style={s.productCreateMain}>
+            <View style={[s.formStep,s.productFormStep]}>
+              <View style={s.stepHeading}><ThemedText style={s.stepNumber}>1</ThemedText><ThemedText style={s.productName}>Información del producto</ThemedText></View>
+              <TextInput editable={!busy && !action.busy} style={s.input} placeholder="Nombre del producto" required {...productForm.field("name")} value={name} onChangeText={setName}/>
+              <TextInput editable={!busy && !action.busy} style={[s.input,s.multilineInput]} multiline maxLength={500} placeholder="Descripción corta para mostrar en Caja" {...productForm.field("description")} value={description} onChangeText={setDescription}/>
+              <Notice kind="error" message={productForm.errors.type}/>
+              <View style={s.types}>{[["pizza","Pizza"],["wings","Alitas"],["fries","Papas"],["nuggets","Nuggets"],["cone","Cono"],["beverage","Bebida"],["extra","Extra"],["other","Otro"]].map(([key,label])=><Pressable accessibilityRole="radio" accessibilityState={{checked:type===key}} key={key} onPress={()=>setType(key)} style={[s.type,type===key&&s.typeActive]}><ThemedText>{label}</ThemedText></Pressable>)}</View>
+            </View>
+            <View style={[s.formStep,s.productFormStep]}>
+              <View style={s.stepHeading}><ThemedText style={s.stepNumber}>2</ThemedText><ThemedText style={s.productName}>Variante inicial</ThemedText></View>
+              <View style={s.inlineFields}><TextInput editable={!busy && !action.busy} style={[s.input,s.flexField]} placeholder="Variante/tamaño" required {...productForm.field("variants.0.name")} value={variantName} onChangeText={setVariantName}/><TextInput editable={!busy && !action.busy} style={[s.input,s.flexField]} placeholder="Precio" required {...productForm.field("variants.0.price")} helperText="Sin separadores de miles; usa punto o coma decimal." value={price} onChangeText={setPrice} keyboardType="decimal-pad"/><TextInput editable={!busy && !action.busy} style={[s.input,s.flexField]} placeholder="Máx. sabores" required {...productForm.field("variants.0.max_flavors")} value={maxFlavors} onChangeText={setMaxFlavors} keyboardType="number-pad"/></View>
+              <TextInput editable={!busy && !action.busy} style={s.input} placeholder="Sabores separados por coma" {...productForm.field("flavors")} value={flavorNames} onChangeText={setFlavorNames}/>
+              {type==="pizza"&&<Pressable accessibilityRole="checkbox" accessibilityState={{checked:half}} onPress={()=>setHalf((value)=>{const next=!value;if(next&&Number(maxFlavors)<2)setMaxFlavors("2");return next;})} style={[s.type,half&&s.typeActive]}><ThemedText>{half?"Mitad y mitad habilitada":"Habilitar mitad y mitad"}</ThemedText></Pressable>}
+            </View>
+            <ActionButton label="Guardar producto" loading={busy || action.busy} onPress={saveProduct}/>
+          </View>
+          <View style={[s.productCreateAside, compact && s.productCreateAsideCompact]}>
+            <View style={[s.formStep,s.productFormStep]}>
+              <View style={s.stepHeading}><ThemedText style={s.stepNumber}>3</ThemedText><ThemedText style={s.productName}>Imagen del producto</ThemedText></View>
+              <LogoPicker value={productImage} onChange={setProductImage} onError={()=>setMessage("No pudimos cargar la imagen. Revisa el archivo e intenta nuevamente.","error")} emptyLabel="Seleccionar o arrastrar foto del producto" changeLabel="Cambiar foto del producto" />
+              <Notice kind="error" message={productForm.errors.image_data_uri}/>
+              {!!productImage&&<Pressable onPress={()=>setProductImage("")} style={s.secondaryButton}><ThemedText style={s.secondaryText}>Quitar imagen</ThemedText></Pressable>}
+            </View>
+            <View style={s.productPreview}>
+              <View style={s.stepHeading}><ThemedText style={s.previewIcon}>◉</ThemedText><ThemedText style={s.productName}>Así se verá en Caja</ThemedText></View>
+              {productImage?<Image source={{uri:productImage}} resizeMode="cover" style={[s.productPreviewImage,!compact&&s.productPreviewImageCompact]}/>:<View style={s.productPreviewPlaceholder}><ThemedText style={s.previewIcon}>🍕</ThemedText></View>}
+              <View style={s.rowText}><ThemedText style={s.productName}>{name.trim()||"Nombre del producto"}</ThemedText><ThemedText style={s.muted}>{description.trim()||"La descripción aparecerá aquí."}</ThemedText><ThemedText style={s.stock}>{variantName.trim()||"Presentación"} · {price.trim()?`$${price}`:"Precio pendiente"}</ThemedText></View>
+            </View>
+          </View>
         </View>
-        <View style={s.formStep}>
-          <View style={s.stepHeading}><ThemedText style={s.stepNumber}>2</ThemedText><ThemedText style={s.productName}>Imagen del producto</ThemedText></View>
-          <LogoPicker value={productImage} onChange={setProductImage} onError={()=>setMessage("No pudimos cargar la imagen. Revisa el archivo e intenta nuevamente.","error")} emptyLabel="Seleccionar o arrastrar foto del producto" changeLabel="Cambiar foto del producto" />
-          <Notice kind="error" message={productForm.errors.image_data_uri}/>
-          {!!productImage&&<Pressable onPress={()=>setProductImage("")} style={s.secondaryButton}><ThemedText style={s.secondaryText}>Quitar imagen</ThemedText></Pressable>}
-        </View>
-        <View style={s.formStep}>
-          <View style={s.stepHeading}><ThemedText style={s.stepNumber}>3</ThemedText><ThemedText style={s.productName}>Variante inicial</ThemedText></View>
-          <View style={s.inlineFields}><TextInput editable={!busy && !action.busy} style={[s.input,s.flexField]} placeholder="Variante/tamaño" required {...productForm.field("variants.0.name")} value={variantName} onChangeText={setVariantName}/><TextInput editable={!busy && !action.busy} style={[s.input,s.flexField]} placeholder="Precio" required {...productForm.field("variants.0.price")} helperText="Sin separadores de miles; usa punto o coma decimal." value={price} onChangeText={setPrice} keyboardType="decimal-pad"/><TextInput editable={!busy && !action.busy} style={[s.input,s.flexField]} placeholder="Máx. sabores" required {...productForm.field("variants.0.max_flavors")} value={maxFlavors} onChangeText={setMaxFlavors} keyboardType="number-pad"/></View>
-          <TextInput editable={!busy && !action.busy} style={s.input} placeholder="Sabores separados por coma" {...productForm.field("flavors")} value={flavorNames} onChangeText={setFlavorNames}/>
-          {type==="pizza"&&<Pressable accessibilityRole="checkbox" accessibilityState={{checked:half}} onPress={()=>setHalf((value)=>{const next=!value;if(next&&Number(maxFlavors)<2)setMaxFlavors("2");return next;})} style={[s.type,half&&s.typeActive]}><ThemedText>{half?"Mitad y mitad habilitada":"Habilitar mitad y mitad"}</ThemedText></Pressable>}
-        </View>
-        <View style={s.productPreview}>
-          <View style={s.stepHeading}><ThemedText style={s.previewIcon}>◉</ThemedText><ThemedText style={s.productName}>Vista previa</ThemedText></View>
-          {productImage?<Image source={{uri:productImage}} resizeMode="cover" style={s.productPreviewImage}/>:<View style={s.productPreviewPlaceholder}><ThemedText style={s.previewIcon}>🍕</ThemedText></View>}
-          <View style={s.rowText}><ThemedText style={s.productName}>{name.trim()||"Nombre del producto"}</ThemedText><ThemedText style={s.muted}>{description.trim()||"La descripción aparecerá aquí."}</ThemedText><ThemedText style={s.stock}>{variantName.trim()||"Presentación"} · {price.trim()?`$${price}`:"Precio pendiente"}</ThemedText></View>
-        </View>
-        <ActionButton label="Guardar producto" loading={busy || action.busy} onPress={saveProduct}/>
       </View>}
       {canConfigure&&<ComboManager data={data} token={token}/>}
       {canConfigure&&<SaleRecipes token={token}/>}
