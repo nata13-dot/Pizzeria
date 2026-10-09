@@ -67,7 +67,8 @@ test('stock shortage recovery explains missing inventory and authorizes the same
  };
  const view=render(React.createElement(WorkProvider,null,React.createElement(Harness)));await waitFor(()=>assert.ok(view.getByText('Pedido actual')));await fillSale();
  fireEvent.click(view.getByText('Confirmar y enviar a cocina'));await waitFor(()=>assert.ok(view.getByText('Inventario insuficiente')));
- assert.ok(view.getByText('Queso mozzarella: faltan 400'));assert.ok(view.getByText('Autorizar faltante y enviar a cocina'));assert.equal(posts,1);
+ assert.ok(view.getByLabelText('Completar envío a cocina'));assert.ok(view.getByText('Queso mozzarella: faltan 400'));
+ assert.equal(view.getByText('Autorizar faltante y enviar a cocina').closest('button').tagName,'BUTTON');assert.equal(view.getByText('Continuar con otra venta').closest('button').tagName,'BUTTON');assert.equal(posts,1);
  fireEvent.click(view.getByText('Autorizar faltante y enviar a cocina'));await waitFor(()=>assert.equal(kitchen,2));await waitFor(()=>assert.equal(store.operation,null));assert.equal(posts,1);
 });
 test('confirmation has explicit actions, Escape cancels and focus returns to the opener',async()=>{
