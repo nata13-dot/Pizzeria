@@ -59,17 +59,24 @@ test('lost response is recovered without another POST or payment, kitchen remain
 });
 test('stock shortage recovery explains missing inventory and authorizes the same order',async()=>{
  setup();globalThis.__confirmWork=()=>true;globalThis.__canOverrideStock=true;const catalog=globalThis.__p0Api;let posts=0,kitchen=0;
- const {testApiError}=await import(await loadUi('testSupport/apiErrorIdentity.ts'));
  globalThis.__p0Api=async(path,token,options)=>{
-   if(path==='/orders'){posts++;return {id:53,daily_number:1,status:'confirmed',total:270};}
-   if(path.endsWith('/send-to-kitchen')){kitchen++;if(kitchen===1)throw new testApiError(422,{code:'stock_shortage',stock_warnings:[{ingredient_id:18,name:'Queso mozzarella',shortage:400}]},'Sin inventario');assert.deepEqual(JSON.parse(options.body),{allow_stock_shortage:true});return {id:53,daily_number:1,status:'kitchen_pending',total:270};}
+   if(path==='/orders'){posts++;return {id:53,daily_number:1,status:'confirmed',total:270,stock_warnings:[{ingredient_id:18,name:'Queso mozzarella',shortage:400}]};}
+   if(path.endsWith('/send-to-kitchen')){kitchen++;assert.deepEqual(JSON.parse(options.body),{allow_stock_shortage:true});return {id:53,daily_number:1,status:'kitchen_pending',total:270};}
    return catalog(path,token,options);
  };
  const view=render(React.createElement(WorkProvider,null,React.createElement(Harness)));await waitFor(()=>assert.ok(view.getByText('Pedido actual')));await fillSale();
  fireEvent.click(view.getByText('Confirmar y enviar a cocina'));await waitFor(()=>assert.ok(view.getByText('Inventario insuficiente')));
  assert.ok(view.getByLabelText('Completar envío a cocina'));assert.ok(view.getByText('Queso mozzarella: faltan 400'));
- assert.equal(view.getByText('Autorizar faltante y enviar a cocina').closest('button').tagName,'BUTTON');assert.equal(view.getByText('Continuar con otra venta').closest('button').tagName,'BUTTON');assert.equal(posts,1);
- fireEvent.click(view.getByText('Autorizar faltante y enviar a cocina'));await waitFor(()=>assert.equal(kitchen,2));await waitFor(()=>assert.equal(store.operation,null));assert.equal(posts,1);
+ assert.equal(view.getByText('Autorizar faltante y enviar a cocina').closest('button').tagName,'BUTTON');assert.equal(view.getByText('Continuar con otra venta').closest('button').tagName,'BUTTON');assert.equal(posts,1);assert.equal(kitchen,0);
+ fireEvent.click(view.getByText('Autorizar faltante y enviar a cocina'));await waitFor(()=>assert.equal(kitchen,1));await waitFor(()=>assert.equal(store.operation,null));assert.equal(posts,1);
+});
+test('submitting keeps the POS visible under a blocking loading modal',async()=>{
+ setup();globalThis.__confirmWork=()=>true;const catalog=globalThis.__p0Api;let release;
+ const pending=new Promise(resolve=>{release=resolve;});
+ globalThis.__p0Api=async(path,token,options)=>{if(path==='/orders')return pending;if(path.endsWith('/send-to-kitchen'))return {id:70,daily_number:7,status:'kitchen_pending',total:100};return catalog(path,token,options);};
+ const view=render(React.createElement(WorkProvider,null,React.createElement(Harness)));await waitFor(()=>assert.ok(view.getByText('Pedido actual')));await fillSale();
+ fireEvent.click(view.getByText('Confirmar y enviar a cocina'));await waitFor(()=>assert.ok(view.getByLabelText('Procesando pedido')));assert.ok(view.getByText('Registrando pedido'));assert.ok(view.getByText('Pedido actual'));
+ await act(async()=>{release({id:70,daily_number:7,status:'confirmed',total:100,stock_warnings:[]});});await waitFor(()=>assert.equal(store.operation,null));
 });
 test('confirmation has explicit actions, Escape cancels and focus returns to the opener',async()=>{
  const {ConfirmationDialogHost,confirmAction}=await import(await loadUi('components/ConfirmationDialog.tsx'));
