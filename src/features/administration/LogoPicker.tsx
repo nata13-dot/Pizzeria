@@ -1,3 +1,6 @@
+import {ThemedText} from "../../theme/ThemedText";
+import {useThemedStyles} from "../../theme/ThemeProvider";
+import type {Theme} from "../../theme/tokens";
 import * as ImagePicker from "expo-image-picker";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 
@@ -11,6 +14,7 @@ type LogoPickerProps = {
 };
 
 export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar imagen", changeLabel = "Cambiar imagen", maximumBytes = 5 * 1024 * 1024 }: LogoPickerProps) {
+  const styles=useThemedStyles(createStyles);
   async function pick() {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
@@ -33,17 +37,17 @@ export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar
   }
 
   return <Pressable accessibilityRole="button" onPress={pick} style={styles.dropZone}>
-    {value ? <Image resizeMode="contain" source={{ uri: value }} style={styles.preview} /> : <View style={styles.placeholder}><Text style={styles.icon}>▧</Text></View>}
-    <Text style={styles.title}>{value ? changeLabel : emptyLabel}</Text>
-    <Text style={styles.help}>PNG o JPEG · máximo {maximumBytes / 1024 / 1024} MB</Text>
+    {value ? <Image resizeMode="contain" source={{ uri: value }} style={styles.preview} /> : <View style={styles.placeholder}><ThemedText style={styles.icon}>▧</ThemedText></View>}
+    <ThemedText style={styles.title}>{value ? changeLabel : emptyLabel}</ThemedText>
+    <ThemedText style={styles.help}>PNG o JPEG · máximo {maximumBytes / 1024 / 1024} MB</ThemedText>
   </Pressable>;
 }
 
-const styles = StyleSheet.create({
-  dropZone: { alignItems: "center", backgroundColor: "#f8f9fa", borderColor: "#cfd4da", borderRadius: 14, borderStyle: "dashed", borderWidth: 2, gap: 5, justifyContent: "center", minHeight: 112, padding: 10 },
-  help: { color: "#747b85", fontSize: 13 },
-  icon: { color: "#747b85", fontSize: 22 },
+const createStyles=(theme:Theme)=>StyleSheet.create({
+  dropZone: { alignItems: "center", backgroundColor: theme.colors.surfaceMuted, borderColor: theme.colors.borderStrong, borderRadius: theme.radius.card, borderStyle: "dashed", borderWidth: 2, gap: 5, justifyContent: "center", minHeight: 112, padding: 10 },
+  help: { color: theme.colors.textMuted, fontSize: 13 * theme.fontScale },
+  icon: { color: theme.colors.textMuted, fontSize: 22 * theme.fontScale },
   placeholder: { alignItems: "center", height: 30, justifyContent: "center" },
   preview: { height: 58, width: "80%" },
-  title: { color: "#30353c", fontWeight: "900" },
+  title: { color: theme.colors.text, fontWeight: "900" },
 });

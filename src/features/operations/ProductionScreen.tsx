@@ -1,5 +1,14 @@
+import {ThemedText} from "../../theme/ThemedText";
+import { usePaginatedResource, useRemoteResource } from "../../hooks/useRemoteResource";
+import { RemoteListStatus, Pagination } from "../../components/RemoteListStatus";
+import { ActionButton } from "../../components/ActionButton";
+import { useActionGate } from "../../forms/useActionGate";
+import { useFormErrors } from "../../forms/useFormErrors";
+import { useWorkField, useWorkGuard } from "../../work/WorkProvider";
+import { decimalInput, required, operationError } from "../../forms/validation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useResponsiveLayout } from "../../layout/responsive";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
 import { api } from "../../api";
 import type {
@@ -21,14 +30,14 @@ import {
   localDateTimeValue,
   moneyText,
   numberValue,
-  ops,
+  useOpsStyles,
   quantityText,
   Section,
   Tabs,
 } from "./ui";
 
 type ProductionTab = "produce" | "recipes" | "batches";
-type RecipeDraftItem = { ingredient_id: number; name: string; unit: string; quantity: number };
+type RecipeDraftItem = { ingredient_id: number; name: string; unit: string; base_unit_id: number; quantity: string };
 type PortionDraft = { id: number; portion_name: string; quantity: number; grams_per_portion: number };
 
 function recipeOutputBaseQuantity(recipe: ProductionRecipe | null, multiplier: number): number {
@@ -46,12 +55,14 @@ function productionExpiry(producedAt: string, shelfLifeDays: number): string {
 }
 
 export function ProductionScreen({ token, isAdministrator }: { token: string; isAdministrator: boolean }) {
-  const { width } = useWindowDimensions();
-  const compact = width < 980;
+  const ops=useOpsStyles();
+  const { compact, mobile } = useResponsiveLayout();
   const [tab, setTab] = useState<ProductionTab>("produce");
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [units, setUnits] = useState<Unit[]>([]);
-  const [recipes, setRecipes] = useState<ProductionRecipe[]>([]);
+  const recipeDirectory = usePaginatedResource<ProductionRecipe>("/production-recipes?paginated=1", token, "las recetas de producción", 300, tab === "recipes");
+  const productionDirectory = usePaginatedResource<ProductionRecipe>("/production-recipes?paginated=1&active=1", token, "las preparaciones disponibles", 300, tab === "produce");
+  const recipes = recipeDirectory.items;
   const [batches, setBatches] = useState<ProductionBatch[]>([]);
   const [batchPage, setBatchPage] = useState(1);
   const [batchLastPage, setBatchLastPage] = useState(1);
@@ -66,16 +77,16 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
   const saveLock = useRef(false);
   const portionId = useRef(1);
 
-  const [editingRecipeId, setEditingRecipeId] = useState<number | null>(null);
-  const [recipeName, setRecipeName] = useState("");
-  const [recipeOutputIngredientId, setRecipeOutputIngredientId] = useState<number | null>(null);
-  const [yieldQuantity, setYieldQuantity] = useState("1");
-  const [yieldUnitId, setYieldUnitId] = useState<number | null>(null);
-  const [shelfLifeDays, setShelfLifeDays] = useState("1");
-  const [recipeActive, setRecipeActive] = useState(true);
-  const [inputIngredientId, setInputIngredientId] = useState<number | null>(null);
-  const [inputQuantity, setInputQuantity] = useState("");
-  const [recipeItems, setRecipeItems] = useState<RecipeDraftItem[]>([]);
+  const [editingRecipeId, setEditingRecipeId] = useWorkField<number | null>("productionRecipe", "editingRecipeId", null);
+  const [recipeName, setRecipeName] = useWorkField("productionRecipe", "recipeName", "");
+  const [recipeOutputIngredientId, setRecipeOutputIngredientId] = useWorkField<number | null>("productionRecipe", "recipeOutputIngredientId", null);
+  const [yieldQuantity, setYieldQuantity] = useWorkField("productionRecipe", "yieldQuantity", "1");
+  const [yieldUnitId, setYieldUnitId] = useWorkField<number | null>("productionRecipe", "yieldUnitId", null);
+  const [shelfLifeDays, setShelfLifeDays] = useWorkField("productionRecipe", "shelfLifeDays", "1");
+  const [recipeActive, setRecipeActive] = useWorkField("productionRecipe", "recipeActive", true);
+  const [inputIngredientId, setInputIngredientId] = useWorkField<number | null>("productionRecipe", "inputIngredientId", null);
+  const [inputQuantity, setInputQuantity] = useWorkField("productionRecipe", "inputQuantity", "");
+  const [recipeItems, setRecipeItems] = useWorkField<RecipeDraftItem[]>("productionRecipe", "recipeItems", []);
 
   const [productionRecipeId, setProductionRecipeId] = useState<number | null>(null);
   const [multiplier, setMultiplier] = useState("1");
@@ -86,13 +97,26 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
   const [gramsPerPortion, setGramsPerPortion] = useState("");
   const [portions, setPortions] = useState<PortionDraft[]>([]);
 
+  const recipeGate = useActionGate();
+  const recipeForm = useFormErrors();
+  const [baseline, setBaseline] = useWorkField("productionRecipe", "baseline", "");
+  const snapshot = JSON.stringify([editingRecipeId, recipeName, recipeOutputIngredientId, yieldQuantity, yieldUnitId, shelfLifeDays, recipeActive, recipeItems]);
+  const recipeDirty = baseline ? snapshot !== baseline || !!inputQuantity : !!(recipeName.trim() || recipeItems.length || inputQuantity || recipeOutputIngredientId || yieldQuantity !== "1" || shelfLifeDays !== "1");
+  useWorkGuard("production-recipe", "la receta de producción", recipeDirty, saving || recipeGate.busy, true);
+  async function replaceRecipe(action: () => void) {
+    await recipeGate.run(async () => {
+      if (recipeDirty && !await confirmAction("Se reemplazarán los cambios de la receta de producción abierta.", {title:"Cambiar de receta",acceptLabel:"Reemplazar cambios",cancelLabel:"Seguir editando"})) return;
+      action();
+    });
+  }
   const activeIngredients = ingredients.filter((ingredient) => ingredient.active);
   const activeUnits = units.filter((unit) => unit.active);
   const ingredientById = useMemo(() => new Map(ingredients.map((ingredient) => [ingredient.id, ingredient])), [ingredients]);
   const recipeOutputIngredient = ingredients.find((ingredient) => ingredient.id === recipeOutputIngredientId) ?? null;
   const compatibleYieldUnits = activeUnits.filter((unit) => unit.dimension === recipeOutputIngredient?.base_unit?.dimension);
-  const selectedRecipe = recipes.find((recipe) => recipe.id === productionRecipeId) ?? null;
-  const parsedMultiplier = inputNumber(multiplier);
+  const recipeDetail = useRemoteResource<ProductionRecipe>(productionRecipeId ? `/production-recipes/${productionRecipeId}` : null, token, "la receta seleccionada");
+  const selectedRecipe = recipeDetail.data;
+  const parsedMultiplier = decimalInput(multiplier);
   const validMultiplier = Number.isFinite(parsedMultiplier) && parsedMultiplier > 0 ? parsedMultiplier : 0;
   const outputBaseQuantity = recipeOutputBaseQuantity(selectedRecipe, validMultiplier);
   const selectedRecipeYieldInGrams = selectedRecipe?.yield_unit?.dimension === "mass"
@@ -113,29 +137,25 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
 
   async function load(initial = false): Promise<void> {
     const currentRequest = ++requestId.current;
+    if (!initial) { recipeDirectory.reload(); productionDirectory.reload(); recipeDetail.reload(); }
     if (initial) setLoading(true);
     else setRefreshing(true);
     setError("");
     try {
-      const [nextIngredients, nextUnits, nextRecipes, nextBatches] = await Promise.all([
+      const [nextIngredients, nextUnits, nextBatches] = await Promise.all([
         fetchAllPages<Ingredient>("/ingredients", token),
         api<Unit[]>("/catalogs/units", token),
-        api<ProductionRecipe[]>("/production-recipes", token),
         fetchPage<ProductionBatch>("/production-batches", token),
       ]);
       if (currentRequest !== requestId.current) return;
       setIngredients(nextIngredients);
       setUnits(nextUnits);
-      setRecipes(nextRecipes);
       setBatches(nextBatches.data);
       setBatchPage(nextBatches.current_page);
       setBatchLastPage(nextBatches.last_page);
-      const firstActiveRecipe = nextRecipes.find((recipe) => recipe.active && recipe.output_ingredient_id);
-      setProductionRecipeId((current) => current && nextRecipes.some((recipe) => recipe.id === current && recipe.active) ? current : firstActiveRecipe?.id ?? null);
-      setRecipeOutputIngredientId((current) => current ?? nextIngredients.find((ingredient) => ingredient.active)?.id ?? null);
       setInputIngredientId((current) => current ?? nextIngredients.find((ingredient) => ingredient.active)?.id ?? null);
     } catch (loadError) {
-      if (currentRequest === requestId.current) setError((loadError as Error).message);
+      if (currentRequest === requestId.current) setError(operationError(loadError, "cargar la información"));
     } finally {
       if (currentRequest === requestId.current) {
         setLoading(false);
@@ -156,7 +176,7 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
       setBatchPage(next.current_page);
       setBatchLastPage(next.last_page);
     } catch (loadError) {
-      if (currentRequest === requestId.current) setError((loadError as Error).message);
+      if (currentRequest === requestId.current) setError(operationError(loadError, "cargar la información"));
     } finally {
       if (currentRequest === requestId.current) setLoadingMoreBatches(false);
     }
@@ -168,21 +188,15 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
   }, [token]);
 
   useEffect(() => {
-    if (!recipeOutputIngredient?.base_unit) return;
-    const currentUnit = units.find((unit) => unit.id === yieldUnitId);
-    if (!currentUnit?.active || currentUnit.dimension !== recipeOutputIngredient.base_unit.dimension) {
-      setYieldUnitId(units.find((unit) => unit.active && unit.dimension === recipeOutputIngredient.base_unit?.dimension)?.id ?? null);
-    }
-  }, [recipeOutputIngredientId, units]);
-
-  useEffect(() => {
-    if (selectedRecipe?.yield_unit?.dimension !== "mass" && portions.length) setPortions([]);
+    if (selectedRecipe && selectedRecipe.yield_unit?.dimension !== "mass" && portions.length) setPortions([]);
   }, [productionRecipeId, selectedRecipe?.yield_unit?.dimension]);
 
   function resetRecipeForm(): void {
+    recipeForm.clear();
     setEditingRecipeId(null);
     setRecipeName("");
-    setRecipeOutputIngredientId(activeIngredients[0]?.id ?? null);
+    setRecipeOutputIngredientId(null);
+    setBaseline("");
     setYieldQuantity("1");
     setYieldUnitId(null);
     setShelfLifeDays("1");
@@ -192,6 +206,7 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
   }
 
   function editRecipe(recipe: ProductionRecipe): void {
+    recipeForm.clear();
     setEditingRecipeId(recipe.id);
     setRecipeName(recipe.name);
     setRecipeOutputIngredientId(recipe.output_ingredient_id);
@@ -203,42 +218,54 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
       ingredient_id: item.ingredient_id,
       name: item.ingredient?.name ?? `Insumo #${item.ingredient_id}`,
       unit: item.ingredient?.base_unit?.symbol ?? "u",
-      quantity: numberValue(item.quantity),
+      base_unit_id: item.ingredient?.base_unit_id ?? 0,
+      quantity: String(item.quantity),
     })));
+    setBaseline(JSON.stringify([recipe.id, recipe.name, recipe.output_ingredient_id, String(recipe.yield_quantity), recipe.yield_unit_id, String(recipe.shelf_life_days), recipe.active, recipe.items.map(item => ({ingredient_id:item.ingredient_id,name:item.ingredient?.name ?? `Insumo #${item.ingredient_id}`,unit:item.ingredient?.base_unit?.symbol ?? "u",base_unit_id:item.ingredient?.base_unit_id ?? 0,quantity:String(item.quantity)}))]));
+    setInputQuantity("");
     setError("");
     setMessage("");
     setTab("recipes");
   }
 
+  async function chooseOutput(ingredient: Ingredient) {
+    await recipeGate.run(async () => {
+      if (recipeOutputIngredientId === ingredient.id) return;
+      if (recipeOutputIngredientId && !await confirmAction(`La receta producirá ${ingredient.name}. Revisa el rendimiento: no se convierte automáticamente la cantidad capturada.`, {title:"Cambiar lo que se prepara",acceptLabel:"Cambiar y revisar rendimiento",cancelLabel:"Conservar salida"})) return;
+      setRecipeOutputIngredientId(ingredient.id);
+      setYieldUnitId(activeUnits.find(unit => unit.id === ingredient.base_unit_id)?.id ?? null);
+    });
+  }
+
   function addRecipeItem(): void {
     const ingredient = activeIngredients.find((item) => item.id === inputIngredientId);
-    const quantity = inputNumber(inputQuantity);
-    if (!ingredient || !Number.isFinite(quantity) || quantity <= 0) {
+    const quantity = decimalInput(inputQuantity);
+    if (!ingredient?.base_unit || !Number.isFinite(quantity) || quantity <= 0) {
       setError("Selecciona un insumo y captura una cantidad mayor que cero.");
       return;
     }
-    setRecipeItems((current) => [
-      ...current.filter((item) => item.ingredient_id !== ingredient.id),
-      { ingredient_id: ingredient.id, name: ingredient.name, unit: ingredient.base_unit?.symbol ?? "u", quantity },
-    ]);
+    if (recipeItems.some(item => item.ingredient_id === ingredient.id)) { setError("Este ingrediente ya está agregado. Edita su cantidad en la lista."); return; }
+    setRecipeItems(current => [...current, {ingredient_id:ingredient.id,name:ingredient.name,unit:ingredient.base_unit?.symbol ?? "u",base_unit_id:ingredient.base_unit_id,quantity:String(quantity)}]);
     setInputQuantity("");
     setError("");
   }
 
   async function saveRecipe(): Promise<void> {
     if (!isAdministrator || saveLock.current) return;
-    const yieldAmount = inputNumber(yieldQuantity);
-    const shelfLife = inputNumber(shelfLifeDays);
+    const yieldAmount = decimalInput(yieldQuantity);
+    const shelfLife = decimalInput(shelfLifeDays);
     const yieldUnit = compatibleYieldUnits.find((unit) => unit.id === yieldUnitId);
-    if (!recipeName.trim() || !recipeOutputIngredient || !yieldUnit || !Number.isFinite(yieldAmount) || yieldAmount <= 0 || !Number.isInteger(shelfLife) || shelfLife < 0 || !recipeItems.length) {
-      setError("Completa nombre, salida, rendimiento compatible, vida útil e insumos de la receta.");
-      return;
-    }
+    if (!recipeForm.validate({name:required(recipeName,"el nombre de la receta"),output:!recipeOutputIngredient?"Selecciona qué se prepara.":"",yield:!yieldUnit || !Number.isFinite(yieldAmount)||yieldAmount<=0?"Indica cuánto produce y una unidad compatible.":"",days:!Number.isInteger(shelfLife)||shelfLife<0?"Ingresa días enteros, desde cero.":"",items:!recipeItems.length?"Agrega ingredientes.":inputQuantity.trim()?"Agrega o limpia la cantidad pendiente.":"",...Object.fromEntries(recipeItems.map((r,i)=>[`row.${i}`,!Number.isFinite(decimalInput(r.quantity))||decimalInput(r.quantity)<=0?"Ingresa una cantidad mayor que cero.":""]))}) || !recipeOutputIngredient || !yieldUnit) return;
+    if (!recipeActive && !await confirmAction("No se podrán registrar nuevas producciones con esta receta. Los lotes existentes se conservan.", {title:"Desactivar receta de producción",acceptLabel:"Guardar receta inactiva",cancelLabel:"Seguir editando"})) return;
     saveLock.current = true;
     setSaving(true);
     setError("");
     setMessage("");
     try {
+      for (const row of recipeItems) {
+        const current = await api<Ingredient>(`/ingredients/${row.ingredient_id}`, token, {cache:"reload"});
+        if (!current.active || current.base_unit_id !== row.base_unit_id) {setError(`Revisa ${row.name}: cambió su disponibilidad o unidad. No se guardó la receta.`);return;}
+      }
       const recipe = await api<ProductionRecipe>(editingRecipeId ? `/production-recipes/${editingRecipeId}` : "/production-recipes", token, {
         method: editingRecipeId ? "PUT" : "POST",
         body: JSON.stringify({
@@ -248,7 +275,7 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
           yield_unit_id: yieldUnit.id,
           shelf_life_days: shelfLife,
           active: recipeActive,
-          items: recipeItems.map((item) => ({ ingredient_id: item.ingredient_id, quantity: item.quantity })),
+          items: recipeItems.map((item) => ({ ingredient_id: item.ingredient_id, quantity: decimalInput(item.quantity) })),
         }),
       });
       setMessage(editingRecipeId ? `Receta “${recipe.name}” actualizada.` : `Receta “${recipe.name}” registrada.`);
@@ -256,7 +283,8 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
       await load();
       setProductionRecipeId(recipe.active ? recipe.id : null);
     } catch (saveError) {
-      setError((saveError as Error).message);
+      recipeForm.fromError(saveError, {name:"el nombre",output_ingredient_id:"lo que se prepara",yield_quantity:"el rendimiento",yield_unit_id:"la unidad",shelf_life_days:"los días de vida útil",items:"los ingredientes"}, {output_ingredient_id:"output",yield_quantity:"yield",yield_unit_id:"yield",shelf_life_days:"days"});
+      setError(operationError(saveError, "guardar la receta", true));
     } finally {
       saveLock.current = false;
       setSaving(false);
@@ -290,9 +318,9 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
   }
 
   async function produce(): Promise<void> {
-    if (saveLock.current || !selectedRecipe) return;
+    if (saveLock.current || !selectedRecipe || !selectedRecipe.active || recipeDetail.loading || recipeDetail.error) return;
     if (!validMultiplier || !productionDateValid || !producedAtInstant) {
-      setError("El multiplicador debe ser mayor que cero y la fecha no puede estar en el futuro.");
+      setError("La cantidad de tandas debe ser mayor que cero y la fecha no puede estar en el futuro.");
       return;
     }
     if (!outputBaseQuantity) {
@@ -308,7 +336,7 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
       return;
     }
     const outputName = selectedRecipe.output_ingredient?.name ?? "insumo de salida";
-    if (!(await confirmAction(`¿Registrar esta producción? Consumirá los insumos por FEFO y generará ${quantityText(outputBaseQuantity)} ${selectedRecipe.output_ingredient?.base_unit?.symbol ?? "u"} de ${outputName}.`))) return;
+    if (!(await confirmAction(`¿Registrar esta producción? Consumirá primero los ingredientes que caducan antes y generará ${quantityText(outputBaseQuantity)} ${selectedRecipe.output_ingredient?.base_unit?.symbol ?? "u"} de ${outputName}.`))) return;
     saveLock.current = true;
     setSaving(true);
     setError("");
@@ -332,7 +360,7 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
       setMessage(`Producción #${batch.id} registrada; insumos consumidos y lote de salida creado.`);
       await load();
     } catch (productionError) {
-      setError((productionError as Error).message);
+      setError(operationError(productionError, "guardar los cambios", true));
     } finally {
       saveLock.current = false;
       setSaving(false);
@@ -342,109 +370,116 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
   const recipeOutputPreview = useMemo(() => {
     const unit = compatibleYieldUnits.find((candidate) => candidate.id === yieldUnitId);
     const baseUnit = recipeOutputIngredient?.base_unit;
-    const amount = inputNumber(yieldQuantity);
+    const amount = decimalInput(yieldQuantity);
     if (!unit || !baseUnit || !Number.isFinite(amount) || amount <= 0) return null;
     return amount * (numberValue(unit.base_factor) / numberValue(baseUnit.base_factor));
   }, [yieldUnitId, yieldQuantity, recipeOutputIngredientId, units]);
 
   if (loading) return <LoadingState text="Cargando recetas, insumos y lotes de producción..." />;
 
-  return <View style={ops.screen}>
-    <View style={ops.toolbar}>
+  return <View style={[ops.screen, mobile && ops.screenMobile]}>
+    <View style={[ops.toolbar, mobile && ops.toolbarMobile]}>
       <Tabs
         active={tab}
         items={[
           { key: "produce", label: "Registrar producción" },
-          { key: "recipes", label: `Recetas (${recipes.length})` },
+          { key: "recipes", label: "Recetas" },
           { key: "batches", label: `Lotes producidos (${batches.length})` },
         ]}
-        onChange={(key) => setTab(key as ProductionTab)}
+        onChange={(key) => { if (!saving && !recipeGate.busy) setTab(key as ProductionTab); }}
       />
-      <Pressable disabled={refreshing} onPress={() => load()} style={[ops.outlineButton, refreshing && ops.disabled]}><Text style={ops.outlineText}>{refreshing ? "Actualizando..." : "Actualizar"}</Text></Pressable>
+      <Pressable disabled={refreshing || saving || recipeGate.busy} onPress={() => load()} style={[ops.outlineButton, mobile && ops.fullWidthButton, refreshing && ops.disabled]}><ThemedText style={ops.outlineText}>{refreshing ? "Actualizando..." : "Actualizar"}</ThemedText></Pressable>
     </View>
     <Feedback error={error} message={message} />
 
-    {tab === "produce" && <Section title="Registrar producción">
-      <Text style={ops.label}>Receta activa</Text>
-      <View style={ops.chips}>{recipes.filter((recipe) => recipe.active).map((recipe) => <Pressable key={recipe.id} onPress={() => setProductionRecipeId(recipe.id)} style={[ops.chip, productionRecipeId === recipe.id && ops.chipActive]}><Text>{recipe.name}</Text></Pressable>)}</View>
-      {!recipes.some((recipe) => recipe.active) && <EmptyState text={isAdministrator ? "No hay recetas activas. Crea o reactiva una en la pestaña Recetas." : "No hay recetas de producción activas; solicita su configuración a un administrador."} />}
-      {selectedRecipe && <>
+    {tab === "produce" && <Section title="Registrar producción" compact={mobile}>
+      <ThemedText style={ops.label}>Receta activa</ThemedText>
+      <TextInput label="Buscar preparación" value={productionDirectory.search} maxLength={100} onChangeText={productionDirectory.setSearch} style={ops.input}/>
+      <RemoteListStatus {...productionDirectory} count={productionDirectory.items.length} emptyText="No hay recetas activas. Solicita su configuración antes de producir." onRetry={productionDirectory.reload}/>
+      <View style={ops.chips}>{productionDirectory.items.map((recipe) => <Pressable disabled={saving || recipeGate.busy} key={recipe.id} onPress={() => setProductionRecipeId(recipe.id)} style={[ops.chip, productionRecipeId === recipe.id && ops.chipActive]}><ThemedText>{recipe.name}</ThemedText></Pressable>)}</View>
+      <Pagination {...productionDirectory} onPage={productionDirectory.setPage}/>
+      {!!productionRecipeId && <RemoteListStatus {...recipeDetail} count={selectedRecipe ? 1 : 0} emptyText="Selecciona una preparación." onRetry={recipeDetail.reload}/>}
+      {selectedRecipe && !selectedRecipe.active && <Feedback error="La receta seleccionada está inactiva. Elige otra preparación."/>}
+      {selectedRecipe && <><ThemedText style={ops.subtitle}>Preparación seleccionada: {selectedRecipe.name}</ThemedText>
         <View style={ops.noticeBox}>
-          <Text style={ops.notice}>Resultado por multiplicador 1: {quantityText(recipeOutputBaseQuantity(selectedRecipe, 1))} {selectedRecipe.output_ingredient?.base_unit?.symbol ?? "u"} de {selectedRecipe.output_ingredient?.name ?? "salida sin nombre"}.</Text>
+          <ThemedText style={ops.notice}>Una tanda produce: {quantityText(recipeOutputBaseQuantity(selectedRecipe, 1))} {selectedRecipe.output_ingredient?.base_unit?.symbol ?? "u"} de {selectedRecipe.output_ingredient?.name ?? "salida sin nombre"}.</ThemedText>
         </View>
         <View style={[ops.inline, compact && ops.inlineCompact]}>
-          <TextInput style={[ops.input, ops.fieldGrow]} value={multiplier} onChangeText={setMultiplier} placeholder="Multiplicador" keyboardType="decimal-pad" />
-          <TextInput style={[ops.input, ops.fieldGrow]} value={producedAt} onChangeText={setProducedAt} placeholder="AAAA-MM-DDTHH:mm" autoCapitalize="none" />
+          <TextInput editable={!saving && !recipeGate.busy} style={[ops.input, ops.fieldGrow]} value={multiplier} onChangeText={setMultiplier} placeholder="¿Cuántas tandas prepararás?" keyboardType="decimal-pad" />
+          <TextInput editable={!saving && !recipeGate.busy} style={[ops.input, ops.fieldGrow]} value={producedAt} onChangeText={setProducedAt} placeholder="AAAA-MM-DDTHH:mm" autoCapitalize="none" />
         </View>
-        <TextInput style={[ops.input, ops.textArea]} value={productionNotes} onChangeText={setProductionNotes} placeholder="Notas opcionales del lote" multiline />
-        <View style={ops.metrics}>
-          <View style={ops.metric}><Text style={ops.metricValue}>{quantityText(outputBaseQuantity)}</Text><Text style={ops.muted}>{selectedRecipe.output_ingredient?.base_unit?.symbol ?? "u"} producidos</Text></View>
-          <View style={ops.metric}><Text style={ops.metricValue}>{productionExpiry(producedAt, selectedRecipe.shelf_life_days)}</Text><Text style={ops.muted}>Caducidad calculada</Text></View>
+        <TextInput editable={!saving && !recipeGate.busy} style={[ops.input, ops.textArea]} value={productionNotes} onChangeText={setProductionNotes} placeholder="Notas opcionales del lote" multiline />
+        <View style={[ops.metrics, mobile && ops.metricsMobile]}>
+          <View style={ops.metric}><ThemedText style={ops.metricValue}>{quantityText(outputBaseQuantity)}</ThemedText><ThemedText style={ops.muted}>{selectedRecipe.output_ingredient?.base_unit?.symbol ?? "u"} producidos</ThemedText></View>
+          <View style={ops.metric}><ThemedText style={ops.metricValue}>{productionExpiry(producedAt, selectedRecipe.shelf_life_days)}</ThemedText><ThemedText style={ops.muted}>Caducidad calculada</ThemedText></View>
         </View>
-        <Text style={ops.subtitle}>Insumos a consumir por FEFO</Text>
+        <ThemedText style={ops.subtitle}>Vas a consumir (primero lo que caduca antes)</ThemedText>
         {inputPreview.map((item) => <View style={ops.insetCard} key={item.ingredientId}>
           <View style={ops.row}>
-            <Text style={ops.strong}>{item.ingredient?.name ?? "Insumo desconocido"}</Text>
-            <Text style={item.shortage > 0.00001 ? ops.statusDanger : ops.statusGood}>{quantityText(item.required)} {item.ingredient?.base_unit?.symbol ?? "u"}</Text>
+            <ThemedText style={ops.strong}>{item.ingredient?.name ?? "Insumo desconocido"}</ThemedText>
+            <ThemedText style={item.shortage > 0.00001 ? ops.statusDanger : ops.statusGood}>{quantityText(item.required)} {item.ingredient?.base_unit?.symbol ?? "u"}</ThemedText>
           </View>
-          <Text style={ops.muted}>Disponible {quantityText(item.available)}{item.shortage > 0.00001 ? ` · faltan ${quantityText(item.shortage)}` : " · suficiente"}</Text>
+          <ThemedText style={ops.muted}>Disponible {quantityText(item.available)}{item.shortage > 0.00001 ? ` · faltan ${quantityText(item.shortage)}` : " · suficiente"}</ThemedText>
         </View>)}
         {selectedRecipe.yield_unit?.dimension === "mass" && <View style={ops.insetCard}>
-          <Text style={ops.subtitle}>Porciones opcionales</Text>
-          <Text style={ops.muted}>Distribuye hasta {quantityText(selectedRecipeYieldInGrams)} g. Declarado: {quantityText(portionedGrams)} g.</Text>
+          <ThemedText style={ops.subtitle}>Porciones opcionales</ThemedText>
+          <ThemedText style={ops.muted}>Distribuye hasta {quantityText(selectedRecipeYieldInGrams)} g. Declarado: {quantityText(portionedGrams)} g.</ThemedText>
           <View style={[ops.inline, compact && ops.inlineCompact]}>
-            <TextInput style={[ops.input, ops.fieldGrow]} value={portionName} onChangeText={setPortionName} placeholder="Nombre (grande, mediana...)" />
-            <TextInput style={[ops.input, ops.fieldGrow]} value={portionQuantity} onChangeText={setPortionQuantity} placeholder="Número de porciones" keyboardType="number-pad" />
-            <TextInput style={[ops.input, ops.fieldGrow]} value={gramsPerPortion} onChangeText={setGramsPerPortion} placeholder="Gramos por porción" keyboardType="decimal-pad" />
+            <TextInput editable={!saving && !recipeGate.busy} style={[ops.input, ops.fieldGrow]} value={portionName} onChangeText={setPortionName} placeholder="Nombre (grande, mediana...)" />
+            <TextInput editable={!saving && !recipeGate.busy} style={[ops.input, ops.fieldGrow]} value={portionQuantity} onChangeText={setPortionQuantity} placeholder="Número de porciones" keyboardType="number-pad" />
+            <TextInput editable={!saving && !recipeGate.busy} style={[ops.input, ops.fieldGrow]} value={gramsPerPortion} onChangeText={setGramsPerPortion} placeholder="Gramos por porción" keyboardType="decimal-pad" />
           </View>
-          <Pressable onPress={addPortion} style={ops.outlineButton}><Text style={ops.outlineText}>Agregar porciones</Text></Pressable>
-          {portions.map((portion) => <View style={ops.row} key={portion.id}><Text>{portion.quantity} × {portion.portion_name} de {quantityText(portion.grams_per_portion)} g</Text><Pressable onPress={() => setPortions((current) => current.filter((candidate) => candidate.id !== portion.id))}><Text style={ops.dangerText}>Quitar</Text></Pressable></View>)}
+          <Pressable disabled={saving || recipeGate.busy} onPress={addPortion} style={ops.outlineButton}><ThemedText style={ops.outlineText}>Agregar porciones</ThemedText></Pressable>
+          {portions.map((portion) => <View style={ops.row} key={portion.id}><ThemedText>{portion.quantity} × {portion.portion_name} de {quantityText(portion.grams_per_portion)} g</ThemedText><Pressable style={ops.inlineTextAction} disabled={saving || recipeGate.busy} onPress={() => setPortions((current) => current.filter((candidate) => candidate.id !== portion.id))}><ThemedText style={ops.dangerText}>Quitar</ThemedText></Pressable></View>)}
         </View>}
-        <Pressable disabled={saving || !validMultiplier || !productionDateValid || hasKnownShortage} onPress={produce} style={[ops.button, (saving || !validMultiplier || !productionDateValid || hasKnownShortage) && ops.disabled]}>{saving ? <ActivityIndicator color="white" /> : <Text style={ops.buttonText}>Confirmar consumo y producción</Text>}</Pressable>
+        <ActionButton label="Confirmar consumo y producción" loading={saving || recipeGate.busy} disabled={!selectedRecipe.active || recipeDetail.loading || !!recipeDetail.error || !validMultiplier || !productionDateValid || hasKnownShortage} disabledReason={!selectedRecipe.active ? "Selecciona una receta activa." : recipeDetail.loading || recipeDetail.error ? "Espera o reintenta la carga de la receta." : !validMultiplier ? "Indica cuántas tandas prepararás." : !productionDateValid ? "Corrige la fecha; no puede estar en el futuro." : "Faltan ingredientes: revisa las cantidades disponibles indicadas arriba."} onPress={() => recipeGate.run(produce)} />
       </>}
       {lastProduction && <View style={ops.noticeBox}>
-        <Text style={ops.notice}>Último resultado: producción #{lastProduction.id}, vence {dateText(lastProduction.expires_at)}.</Text>
-        {lastProduction.outputs.filter((output) => !output.portion_name).map((output) => <Text style={ops.notice} key={output.id}>Lote {output.inventory_batch?.lot_code || `#${output.inventory_batch_id}`}: {quantityText(output.quantity)} {ingredientById.get(output.ingredient_id)?.base_unit?.symbol ?? "u"}</Text>)}
+        <ThemedText style={ops.notice}>Último resultado: producción #{lastProduction.id}, vence {dateText(lastProduction.expires_at)}.</ThemedText>
+        {lastProduction.outputs.filter((output) => !output.portion_name).map((output) => <ThemedText style={ops.notice} key={output.id}>Lote {output.inventory_batch?.lot_code || `#${output.inventory_batch_id}`}: {quantityText(output.quantity)} {ingredientById.get(output.ingredient_id)?.base_unit?.symbol ?? "u"}</ThemedText>)}
       </View>}
     </Section>}
 
     {tab === "recipes" && <>
-      {isAdministrator && <Section title={editingRecipeId ? "Editar receta de producción" : "Nueva receta de producción"}>
-        <TextInput style={ops.input} value={recipeName} onChangeText={setRecipeName} placeholder="Nombre de la receta" />
-        <Text style={ops.label}>Insumo producido</Text>
-        <View style={ops.chips}>{activeIngredients.map((ingredient) => <Pressable key={ingredient.id} onPress={() => setRecipeOutputIngredientId(ingredient.id)} style={[ops.chip, recipeOutputIngredientId === ingredient.id && ops.chipActive]}><Text>{ingredient.name}</Text></Pressable>)}</View>
+      {isAdministrator && <Section title={editingRecipeId ? "Editar receta de producción" : "Nueva receta de producción"} compact={mobile}>
+        <TextInput editable={!saving && !recipeGate.busy} style={ops.input} value={recipeName} onChangeText={setRecipeName} placeholder="Nombre de la receta" required {...recipeForm.field("name")} />
+        <Feedback error={recipeForm.errors.output || recipeForm.errors.items || ""}/><ThemedText style={ops.label}>¿Qué se prepara?</ThemedText>
+        <View style={ops.chips}>{activeIngredients.map((ingredient) => <Pressable accessibilityRole="button" disabled={saving || recipeGate.busy} accessibilityState={{selected:recipeOutputIngredientId === ingredient.id}} key={ingredient.id} onPress={() => chooseOutput(ingredient)} style={[ops.chip, recipeOutputIngredientId === ingredient.id && ops.chipActive]}><ThemedText>{ingredient.name}</ThemedText></Pressable>)}</View>
         <View style={[ops.inline, compact && ops.inlineCompact]}>
-          <TextInput style={[ops.input, ops.fieldGrow]} value={yieldQuantity} onChangeText={setYieldQuantity} placeholder="Rendimiento" keyboardType="decimal-pad" />
-          <TextInput style={[ops.input, ops.fieldGrow]} value={shelfLifeDays} onChangeText={setShelfLifeDays} placeholder="Días de vida útil" keyboardType="number-pad" />
+          <TextInput editable={!saving && !recipeGate.busy} style={[ops.input, ops.fieldGrow]} value={yieldQuantity} onChangeText={setYieldQuantity} placeholder="Cantidad que produce una tanda" required {...recipeForm.field("yield")} keyboardType="decimal-pad" />
+          <TextInput editable={!saving && !recipeGate.busy} style={[ops.input, ops.fieldGrow]} value={shelfLifeDays} onChangeText={setShelfLifeDays} placeholder="Días de vida útil" required {...recipeForm.field("days")} keyboardType="number-pad" />
         </View>
-        <Text style={ops.label}>Unidad del rendimiento</Text>
-        <View style={ops.chips}>{compatibleYieldUnits.map((unit) => <Pressable key={unit.id} onPress={() => setYieldUnitId(unit.id)} style={[ops.chip, yieldUnitId === unit.id && ops.chipActive]}><Text>{unit.symbol} · {unit.name}</Text></Pressable>)}</View>
-        {recipeOutputPreview !== null && <Text style={ops.notice}>Resultado base por tanda: {quantityText(recipeOutputPreview)} {recipeOutputIngredient?.base_unit?.symbol ?? "u"} de {recipeOutputIngredient?.name}.</Text>}
-        <Text style={ops.label}>Insumos consumidos por tanda (en unidad base)</Text>
-        <View style={ops.chips}>{activeIngredients.map((ingredient) => <Pressable key={ingredient.id} onPress={() => setInputIngredientId(ingredient.id)} style={[ops.chip, inputIngredientId === ingredient.id && ops.chipActive]}><Text>{ingredient.name}</Text></Pressable>)}</View>
+        <ThemedText style={ops.label}>Unidad de lo que produce una tanda</ThemedText>{yieldUnitId !== null && !compatibleYieldUnits.some(unit => unit.id === yieldUnitId) && <Feedback error="La unidad anterior ya no está disponible. Selecciona una unidad y revisa la cantidad antes de guardar."/>}
+        <View style={ops.chips}>{compatibleYieldUnits.map((unit) => <Pressable accessibilityRole="button" disabled={saving || recipeGate.busy} accessibilityState={{selected:yieldUnitId === unit.id}} key={unit.id} onPress={() => setYieldUnitId(unit.id)} style={[ops.chip, yieldUnitId === unit.id && ops.chipActive]}><ThemedText>{unit.symbol} · {unit.name}</ThemedText></Pressable>)}</View>
+        {recipeOutputPreview !== null && <ThemedText style={ops.notice}>Resultado base por tanda: {quantityText(recipeOutputPreview)} {recipeOutputIngredient?.base_unit?.symbol ?? "u"} de {recipeOutputIngredient?.name}.</ThemedText>}
+        <ThemedText style={ops.label}>Insumos consumidos por tanda (en unidad base)</ThemedText>
+        <View style={ops.chips}>{activeIngredients.map((ingredient) => <Pressable accessibilityRole="button" disabled={saving || recipeGate.busy} accessibilityState={{selected:inputIngredientId === ingredient.id}} key={ingredient.id} onPress={() => setInputIngredientId(ingredient.id)} style={[ops.chip, inputIngredientId === ingredient.id && ops.chipActive]}><ThemedText>{ingredient.name}</ThemedText></Pressable>)}</View>
         <View style={[ops.inline, compact && ops.inlineCompact]}>
-          <TextInput style={[ops.input, ops.fieldGrow]} value={inputQuantity} onChangeText={setInputQuantity} placeholder="Cantidad en unidad base" keyboardType="decimal-pad" />
-          <Pressable onPress={addRecipeItem} style={ops.outlineButton}><Text style={ops.outlineText}>Agregar insumo</Text></Pressable>
+          <TextInput editable={!saving && !recipeGate.busy} style={[ops.input, ops.fieldGrow]} value={inputQuantity} onChangeText={setInputQuantity} placeholder={`Cantidad (${ingredientById.get(inputIngredientId ?? 0)?.base_unit?.symbol ?? "selecciona ingrediente"})`} keyboardType="decimal-pad" />
+          <ActionButton label="Agregar insumo" variant="secondary" disabled={saving || recipeGate.busy} onPress={addRecipeItem} />
         </View>
-        {recipeItems.map((item) => <View style={ops.insetCard} key={item.ingredient_id}><View style={ops.row}><Text>{item.name}: {quantityText(item.quantity)} {item.unit}</Text><Pressable onPress={() => setRecipeItems((current) => current.filter((candidate) => candidate.ingredient_id !== item.ingredient_id))}><Text style={ops.dangerText}>Quitar</Text></Pressable></View></View>)}
-        {editingRecipeId && <Pressable onPress={() => setRecipeActive((value) => !value)} style={[ops.chip, recipeActive && ops.chipActive]}><Text>{recipeActive ? "Receta activa" : "Receta inactiva"}</Text></Pressable>}
+        {recipeItems.map((item, index) => <View style={ops.insetCard} key={item.ingredient_id}><TextInput editable={!saving && !recipeGate.busy} label={`Cantidad de ${item.name} (${item.unit})`} required value={item.quantity} onChangeText={quantity => setRecipeItems(rows => rows.map((row,i) => i === index ? {...row,quantity} : row))} {...recipeForm.field(`row.${index}`)}/><View style={ops.row}><ThemedText>{item.name} · {item.unit}</ThemedText><Pressable accessibilityRole="button" style={ops.inlineTextAction} disabled={saving || recipeGate.busy} onPress={() => setRecipeItems((current) => current.filter((candidate) => candidate.ingredient_id !== item.ingredient_id))}><ThemedText style={ops.dangerText}>Quitar {item.name}</ThemedText></Pressable></View></View>)}
+        {editingRecipeId && <Pressable accessibilityRole="button" disabled={saving || recipeGate.busy} onPress={() => setRecipeActive((value) => !value)} style={[ops.chip, recipeActive && ops.chipActive]}><ThemedText>{recipeActive ? "Receta activa" : "Receta inactiva"}</ThemedText></Pressable>}
         <View style={ops.chips}>
-          <Pressable disabled={saving} onPress={saveRecipe} style={[ops.button, saving && ops.disabled]}>{saving ? <ActivityIndicator color="white" /> : <Text style={ops.buttonText}>{editingRecipeId ? "Actualizar receta" : "Guardar receta"}</Text>}</Pressable>
-          {editingRecipeId && <Pressable onPress={resetRecipeForm} style={ops.outlineButton}><Text style={ops.outlineText}>Cancelar edición</Text></Pressable>}
+          <ActionButton label={editingRecipeId ? "Guardar cambios" : "Guardar receta"} loading={saving || recipeGate.busy} onPress={() => recipeGate.run(saveRecipe)} />
+          <ActionButton label="Descartar cambios de producción" variant="secondary" disabled={saving || recipeGate.busy} onPress={() => replaceRecipe(resetRecipeForm)} />
         </View>
       </Section>}
       <Section title="Recetas configuradas">
-        {!recipes.length ? <EmptyState text="No hay recetas de producción." /> : recipes.map((recipe) => <View style={[ops.card, !recipe.active && ops.disabled]} key={recipe.id}>
+        <TextInput label="Buscar receta o preparación" style={ops.input} value={recipeDirectory.search} maxLength={100} onChangeText={recipeDirectory.setSearch}/>
+        <RemoteListStatus {...recipeDirectory} count={recipes.length} emptyText="Aún no hay recetas de producción." onRetry={recipeDirectory.reload}/>
+        {recipes.map((recipe) => <View style={[ops.card, !recipe.active && ops.disabled]} key={recipe.id}>
           <View style={ops.row}>
             <View style={ops.rowGrow}>
-              <Text style={ops.strong}>{recipe.name}{!recipe.active ? " (inactiva)" : ""}</Text>
-              <Text style={ops.muted}>Produce {quantityText(recipe.yield_quantity)} {recipe.yield_unit?.symbol ?? "u"} de {recipe.output_ingredient?.name ?? "salida sin configurar"} · vida útil {recipe.shelf_life_days} día(s)</Text>
+              <ThemedText style={ops.strong}>{recipe.name}{!recipe.active ? " (inactiva)" : ""}</ThemedText>
+              <ThemedText style={ops.muted}>Produce {quantityText(recipe.yield_quantity)} {recipe.yield_unit?.symbol ?? "u"} de {recipe.output_ingredient?.name ?? "salida sin configurar"} · vida útil {recipe.shelf_life_days} día(s)</ThemedText>
             </View>
-            {isAdministrator && <Pressable onPress={() => editRecipe(recipe)} style={ops.outlineButton}><Text style={ops.outlineText}>Editar</Text></Pressable>}
+            {isAdministrator && <Pressable accessibilityRole="button" disabled={saving || recipeGate.busy} onPress={() => replaceRecipe(() => editRecipe(recipe))} style={ops.outlineButton}><ThemedText style={ops.outlineText}>Editar</ThemedText></Pressable>}
           </View>
-          <Text style={ops.label}>Insumos por tanda</Text>
-          {recipe.items.map((item) => <Text style={ops.muted} key={item.id ?? item.ingredient_id}>• {item.ingredient?.name ?? `Insumo #${item.ingredient_id}`}: {quantityText(item.quantity)} {item.ingredient?.base_unit?.symbol ?? "u"}</Text>)}
+          <ThemedText style={ops.label}>Insumos por tanda</ThemedText>
+          {recipe.items.map((item) => <ThemedText style={ops.muted} key={item.id ?? item.ingredient_id}>• {item.ingredient?.name ?? `Insumo #${item.ingredient_id}`}: {quantityText(item.quantity)} {item.ingredient?.base_unit?.symbol ?? "u"}</ThemedText>)}
         </View>)}
+        <Pagination {...recipeDirectory} onPage={recipeDirectory.setPage}/>
       </Section>
     </>}
 
@@ -452,20 +487,20 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
       {!batches.length ? <EmptyState text="No hay lotes de producción." /> : batches.map((batch) => <View style={ops.card} key={batch.id}>
         <View style={ops.row}>
           <View style={ops.rowGrow}>
-            <Text style={ops.strong}>Producción #{batch.id} · {batch.recipe?.name ?? "Receta"}</Text>
-            <Text style={ops.muted}>{dateText(batch.produced_at, true)} · multiplicador ×{quantityText(batch.multiplier)} · vence {dateText(batch.expires_at)}</Text>
+            <ThemedText style={ops.strong}>Producción #{batch.id} · {batch.recipe?.name ?? "Receta"}</ThemedText>
+            <ThemedText style={ops.muted}>{dateText(batch.produced_at, true)} · multiplicador ×{quantityText(batch.multiplier)} · vence {dateText(batch.expires_at)}</ThemedText>
           </View>
-          <Text style={ops.badge}>{batch.recipe?.output_ingredient?.name ?? "Salida"}</Text>
+          <ThemedText style={ops.badge}>{batch.recipe?.output_ingredient?.name ?? "Salida"}</ThemedText>
         </View>
-        {!!batch.notes && <Text>{batch.notes}</Text>}
+        {!!batch.notes && <ThemedText>{batch.notes}</ThemedText>}
         {batch.outputs.filter((output) => !output.portion_name).map((output) => <View style={ops.insetCard} key={output.id}>
-          <Text style={ops.strong}>Lote {output.inventory_batch?.lot_code || `#${output.inventory_batch_id}`}: {quantityText(output.quantity)} {ingredientById.get(output.ingredient_id)?.base_unit?.symbol ?? "u"}</Text>
-          <Text style={ops.muted}>Costo unitario ${moneyText(output.inventory_batch?.unit_cost)} · disponible {quantityText(output.inventory_batch?.available_quantity)}</Text>
+          <ThemedText style={ops.strong}>Lote {output.inventory_batch?.lot_code || `#${output.inventory_batch_id}`}: {quantityText(output.quantity)} {ingredientById.get(output.ingredient_id)?.base_unit?.symbol ?? "u"}</ThemedText>
+          <ThemedText style={ops.muted}>Costo unitario ${moneyText(output.inventory_batch?.unit_cost)} · disponible {quantityText(output.inventory_batch?.available_quantity)}</ThemedText>
         </View>)}
-        {batch.outputs.filter((output) => output.portion_name).map((output) => <Text style={ops.muted} key={output.id}>• {quantityText(output.quantity)} × {output.portion_name} de {quantityText(output.grams_per_portion)} g</Text>)}
+        {batch.outputs.filter((output) => output.portion_name).map((output) => <ThemedText style={ops.muted} key={output.id}>• {quantityText(output.quantity)} × {output.portion_name} de {quantityText(output.grams_per_portion)} g</ThemedText>)}
       </View>)}
       {batchPage < batchLastPage && <Pressable disabled={loadingMoreBatches} onPress={loadMoreBatches} style={[ops.outlineButton, loadingMoreBatches && ops.disabled]}>
-        <Text style={ops.outlineText}>{loadingMoreBatches ? "Cargando producciones..." : `Cargar más producciones (página ${batchPage + 1} de ${batchLastPage})`}</Text>
+        <ThemedText style={ops.outlineText}>{loadingMoreBatches ? "Cargando producciones..." : `Cargar más producciones (página ${batchPage + 1} de ${batchLastPage})`}</ThemedText>
       </Pressable>}
     </Section>}
   </View>;

@@ -5,8 +5,7 @@ import ts from 'typescript';
 import { BoundedCache } from './boundedCache.ts';
 
 let instance = 0;
-async function client(fetcher) {
-  const disk = new Map();
+async function client(fetcher, disk = new Map()) {
   globalThis.__cacheTestStorage = {
     getItem: async (key) => disk.get(key) ?? null,
     setItem: async (key, value) => { disk.set(key, value); },
@@ -49,6 +48,19 @@ test('concurrent reads share one request; reload refreshes the shared cache', as
   assert.equal(calls, 2);
   await api('/pos/catalog', 'a');
   assert.equal(calls, 2);
+});
+
+test('image-rich POS catalog survives restart in bounded persistent cache', async () => {
+  const disk = new Map();
+  const catalog = { products: [{ id: 1, image_data_uri: `data:image/jpeg;base64,${'x'.repeat(1_500_000)}` }] };
+  let networkReads = 0;
+  const first = await client(async () => { networkReads++; return ok(catalog); }, disk);
+  assert.equal((await first.api('/pos/catalog', 'a')).products[0].id, 1);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(disk.size, 1);
+  const restarted = await client(async () => { networkReads++; throw new Error('network should not be needed'); }, disk);
+  assert.equal((await restarted.api('/pos/catalog', 'a')).products[0].image_data_uri.length, catalog.products[0].image_data_uri.length);
+  assert.equal(networkReads, 1);
 });
 
 test('variant mutations invalidate the POS catalog; old reads cannot repopulate it', async () => {
@@ -106,4 +118,18 @@ test('no-store does not populate memory or disk and authorization errors do not 
   assert.equal(calls, 2);
   globalThis.fetch = async () => new Response('{"message":"denied"}', { status: 403 });
   await assert.rejects(api('/pos/catalog', 'a', { cacheTtlMs: -1 }), (error) => error.status === 403);
+});
+
+test('missing inventory list falls back to real legacy ingredients with filters and derived status', async () => {
+  const calls=[];
+  const {api}=await client(async url=>{
+    calls.push(url);
+    if(url.includes('/inventory/items'))return new Response('{"message":"missing"}',{status:404});
+    return ok({data:[
+      {id:1,name:'Harina',sku:'HAR',active:true,current_stock:'12',minimum_stock:'10',critical_stock:'5',base_unit:{symbol:'kg'}},
+      {id:2,name:'Queso',sku:'QUE',active:true,current_stock:'3',minimum_stock:'10',critical_stock:'5',base_unit:{symbol:'kg'}},
+    ],current_page:1,last_page:1,total:2});
+  });
+  const result=await api('/inventory/items?status=critical&active=1&page=1&search=queso','a');
+  assert.equal(result.total,1);assert.equal(result.data[0].name,'Queso');assert.equal(result.data[0].stock_status,'critical');assert.equal(result.data[0].missing_to_minimum,7);assert.equal(result.data[0].next_expiry,null);assert.ok(calls.some(url=>url.includes('/ingredients?per_page=100&page=1')));
 });

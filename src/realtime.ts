@@ -20,13 +20,14 @@ export function ordersChannel(
   onChange: (event: OrderStatusEvent) => void,
   onConnectionChange?: (connected: boolean) => void,
 ): () => void {
+  const host = process.env.EXPO_PUBLIC_REVERB_HOST;
+  const key = process.env.EXPO_PUBLIC_REVERB_KEY;
+  const port = Number(process.env.EXPO_PUBLIC_REVERB_PORT ?? 443);
+  if (!host || !key || !Number.isInteger(port) || port < 1 || port > 65535 || /(^|\.)localhost$/i.test(host) || host === "127.0.0.1") {
+    onConnectionChange?.(false);
+    return () => {};
+  }
   try {
-    const host = process.env.EXPO_PUBLIC_REVERB_HOST;
-    const key = process.env.EXPO_PUBLIC_REVERB_KEY;
-    const port = Number(process.env.EXPO_PUBLIC_REVERB_PORT ?? 443);
-    if (!host || !key || !Number.isInteger(port) || port < 1 || port > 65535 || /(^|\.)localhost$/i.test(host) || host === "127.0.0.1") {
-      throw new Error("Realtime no está configurado con un servidor seguro.");
-    }
     const echo = new Echo({
       broadcaster: "reverb",
       Pusher: PusherClient,

@@ -4,6 +4,7 @@ export type Paginated<T> = {
   data: T[];
   current_page: number;
   last_page: number;
+  total?: number;
 };
 
 export type UnitDimension = "mass" | "volume" | "count";
@@ -35,6 +36,7 @@ export type IngredientPresentation = {
   supplier_sku?: string | null;
   active: boolean;
   equivalent_unit?: Unit | null;
+  purchase_revision?: string;
 };
 
 export type Ingredient = {
@@ -82,7 +84,19 @@ export type InventoryMovement = {
   created_at: string;
   ingredient?: Ingredient | null;
   batch?: InventoryBatch | null;
+  type_label?: string;
+  origin_label?: string | null;
 };
+
+export type InventoryStatus = "available" | "low" | "critical" | "out";
+export type InventoryItem = Ingredient & {
+  stock_status: InventoryStatus;
+  missing_to_minimum: NumericValue;
+  next_expiry?: string | null;
+  batches?: InventoryBatch[];
+  movements?: InventoryMovement[];
+};
+export type InventorySummary = { available: number; low: number; critical: number; out: number; expiring: number };
 
 export type InventoryAlert = {
   id: number;

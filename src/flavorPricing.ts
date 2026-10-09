@@ -1,3 +1,4 @@
+import { money, moneyMultiply } from "./money";
 type FlavorSettings = {
   half_and_half_extra: number;
   additional_wing_flavor_extra: number;
@@ -8,7 +9,7 @@ type FlavorSettings = {
 export function flavorSelectionExtra(type: string, flavorIds: number[], settings: FlavorSettings): number {
   const count = new Set(flavorIds).size;
   if (count < 2) return 0;
-  if (type === "pizza") return Number(settings.half_and_half_extra);
-  if (type === "wings") return Number(settings.additional_wing_flavor_extra) * (count - 1);
+  if (type === "pizza") return money(settings.half_and_half_extra);
+  if (type === "wings") return moneyMultiply(settings.additional_wing_flavor_extra, count - 1);
   return 0;
 }

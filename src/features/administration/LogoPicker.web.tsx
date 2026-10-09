@@ -1,4 +1,5 @@
 import { useState, type ChangeEvent, type DragEvent } from "react";
+import {useTheme} from "../../theme/ThemeProvider";
 
 type LogoPickerProps = {
   value: string;
@@ -12,6 +13,7 @@ type LogoPickerProps = {
 const allowedTypes = ["image/png", "image/jpeg"];
 
 export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar o arrastrar imagen", changeLabel = "Cambiar imagen", maximumBytes = 5 * 1024 * 1024 }: LogoPickerProps) {
+  const {theme}=useTheme();
   const [dragging, setDragging] = useState(false);
 
   function read(file?: File) {
@@ -47,8 +49,9 @@ export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar
     onDrop={drop}
     style={{
       alignItems: "center",
-      background: dragging ? "#fff0ec" : "#f8f9fa",
-      border: `2px dashed ${dragging ? "#d94f36" : "#cfd4da"}`,
+      background: dragging ? theme.colors.primarySurface : theme.colors.surfaceMuted,
+      border: `2px dashed ${dragging ? theme.colors.primary : theme.colors.borderStrong}`,
+      color:theme.colors.text,
       borderRadius: 14,
       cursor: "pointer",
       display: "flex",
@@ -69,8 +72,8 @@ export function LogoPicker({ value, onChange, onError, emptyLabel = "Seleccionar
       style={{ cursor: "pointer", inset: 0, opacity: 0, position: "absolute", width: "100%" }}
       type="file"
     />
-    {value ? <img alt="Vista previa de la imagen" src={value} style={{ maxHeight: 58, maxWidth: "80%", objectFit: "contain" }} /> : <span style={{ fontSize: 22 }}>▧</span>}
+    {value ? <img alt="Vista previa de la imagen" src={value} style={{ maxHeight: 58, maxWidth: "80%", objectFit: "contain" }} /> : <span style={{ fontSize: 22 * theme.fontScale }}>▧</span>}
     <strong>{value ? changeLabel : emptyLabel}</strong>
-    <span style={{ color: "#747b85", fontSize: 13 }}>PNG o JPEG · máximo {maximumBytes / 1024 / 1024} MB</span>
+    <span style={{ color: theme.colors.textMuted, fontSize: 13 * theme.fontScale }}>PNG o JPEG · máximo {maximumBytes / 1024 / 1024} MB</span>
   </div>;
 }

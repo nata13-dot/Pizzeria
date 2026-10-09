@@ -65,7 +65,7 @@ export async function registerPush(token: string): Promise<void> {
       name: `Pedidos · ${tone.label}`,
       importance: Notifications.AndroidImportance.HIGH,
       vibrationPattern: [0, 250, 180, 250],
-      lightColor: "#CF4B32",
+      lightColor: "#E3262E",
       sound: tone.file,
     });
   }
@@ -90,7 +90,7 @@ export async function refreshNotificationSounds(_token?: string): Promise<Notifi
   if (Capacitor.isNativePlatform()) {
     for (const tone of notificationTones) await PushNotifications.createChannel({
       id: notificationChannelId(tone.key), name: `Pedidos · ${tone.label}`, description: "Pedidos nuevos y pedidos listos para entregar.",
-      importance: 5, sound: tone.file, vibration: true, lights: true, lightColor: "#CF4B32",
+      importance: 5, sound: tone.file, vibration: true, lights: true, lightColor: "#E3262E",
     });
     for (const tone of settings.customSounds) await NotificationTone.install({ key: tone.key, label: tone.label, dataUri: tone.data_uri, mimeType: tone.mime_type }).catch(() => undefined);
   }

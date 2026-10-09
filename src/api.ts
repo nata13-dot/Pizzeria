@@ -6,9 +6,10 @@ export const API_CACHE_PREFIX = "pizzeria-api-cache:v2:";
 let unauthorizedHandler: (() => void) | null = null;
 const cacheGenerations = new Map<string, number>();
 type AutomaticCacheEntry = { cachedAt: number; data: unknown };
-const automaticMemoryCache = new BoundedCache<AutomaticCacheEntry>(48, 4 * 1024 * 1024);
+const automaticMemoryCache = new BoundedCache<AutomaticCacheEntry>(64, 16 * 1024 * 1024);
 const automaticRequests = new Map<string, Promise<unknown>>();
 const MAX_OFFLINE_CACHE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_PERSISTED_ENTRY_BYTES = 8 * 1024 * 1024;
 const cacheRevisions = new Map<string, number>();
 let storageQueue: Promise<unknown> = Promise.resolve();
 function storageTask(task: () => Promise<unknown>): Promise<unknown> {
@@ -24,6 +25,19 @@ function persistable(path: string): boolean {
   return /^\/(pos\/catalog|product-categories|combos|operational-settings|business-profile|modifiers)$/.test(path);
 }
 export type ApiRequestOptions = RequestInit & { cacheTtlMs?: number };
+
+type LegacyInventoryIngredient = {
+  id: number;
+  name: string;
+  sku?: string | null;
+  active: boolean;
+  current_stock: string | number;
+  minimum_stock: string | number;
+  critical_stock: string | number;
+  base_unit?: unknown;
+  type?: unknown;
+};
+type LegacyInventoryPage = { data: LegacyInventoryIngredient[]; current_page: number; last_page: number; total: number };
 
 function automaticCacheKey(path: string, token?: string): string {
   return `${API_CACHE_PREFIX}${apiCacheScope(token)}:${apiCacheGeneration(token)}:${path}`;
@@ -147,6 +161,7 @@ export type ApiStockWarning = {
 };
 
 export type ApiErrorPayload = {
+  pricing?: {items: {unit_price: string | number; total: string | number}[]; delivery_fee: string | number; total: string | number};
   message?: string;
   code?: string;
   errors?: Record<string, unknown>;
@@ -241,6 +256,9 @@ export async function api<T>(
   try {
     return await request;
   } catch (error) {
+    if (method === "GET" && error instanceof ApiError && error.status === 404 && /^\/inventory\/items(?:\?|$)/.test(path)) {
+      return await legacyInventoryItems(path, token, options) as T;
+    }
     const canUseOfflineCopy = !(error instanceof ApiError) || error.status >= 500;
     if (method === "GET" && current() && persistable(path) && canUseOfflineCopy && staleEntry && Date.now() - staleEntry.cachedAt <= MAX_OFFLINE_CACHE_AGE_MS) {
       return staleEntry.data as T;
@@ -249,6 +267,58 @@ export async function api<T>(
   } finally {
     if (automaticRequests.get(key) === request) automaticRequests.delete(key);
   }
+}
+
+async function legacyInventoryItems(path: string, token: string | undefined, options: ApiRequestOptions): Promise<unknown> {
+  const query = new URLSearchParams(path.split("?", 2)[1] ?? "");
+  const rows: LegacyInventoryIngredient[] = [];
+  let page = 1;
+  let lastPage = 1;
+  do {
+    const result = await api<LegacyInventoryPage>(`/ingredients?per_page=100&page=${page}`, token, {
+      ...options,
+      cache: options.cache === "reload" ? "reload" : "default",
+    });
+    rows.push(...result.data);
+    lastPage = Math.max(1, result.last_page);
+    page += 1;
+  } while (page <= lastPage);
+
+  const search = (query.get("search") ?? "").trim().toLocaleLowerCase();
+  const active = query.get("active");
+  const status = query.get("status");
+  const normalized = rows.map((item) => {
+    const stock = Number(item.current_stock);
+    const minimum = Number(item.minimum_stock);
+    const critical = Number(item.critical_stock);
+    const stockStatus = stock <= 0 ? "out" : stock <= critical ? "critical" : stock <= minimum ? "low" : "available";
+    return {
+      ...item,
+      current_stock: Number.isFinite(stock) ? stock : 0,
+      minimum_stock: Number.isFinite(minimum) ? minimum : 0,
+      critical_stock: Number.isFinite(critical) ? critical : 0,
+      missing_to_minimum: Number.isFinite(stock) && Number.isFinite(minimum) ? Math.max(0, minimum - stock) : 0,
+      stock_status: stockStatus,
+      next_expiry: null,
+    };
+  }).filter((item) => {
+    if (active === "1" && !item.active) return false;
+    if (active === "0" && item.active) return false;
+    if (status && item.stock_status !== status) return false;
+    return !search || item.name.toLocaleLowerCase().includes(search) || (item.sku ?? "").toLocaleLowerCase().includes(search);
+  });
+  const currentPage = Math.max(1, Number(query.get("page")) || 1);
+  const perPage = 25;
+  const offset = (currentPage - 1) * perPage;
+  const data = normalized.slice(offset, offset + perPage);
+  return {
+    data,
+    current_page: currentPage,
+    last_page: Math.max(1, Math.ceil(normalized.length / perPage)),
+    total: normalized.length,
+    from: data.length ? offset + 1 : null,
+    to: data.length ? offset + data.length : null,
+  };
 }
 
 async function requestApi<T>(path: string, token: string | undefined, options: ApiRequestOptions, method: string, key: string, current: () => boolean): Promise<T> {
@@ -291,7 +361,7 @@ async function requestApi<T>(path: string, token: string | undefined, options: A
     if (persistable(path)) void storageTask(async () => {
       if (!current()) return;
       const serialized = JSON.stringify(entry);
-      if (serialized.length * 2 <= 2 * 1024 * 1024) await AsyncStorage.setItem(key, serialized);
+      if (serialized.length * 2 <= MAX_PERSISTED_ENTRY_BYTES) await AsyncStorage.setItem(key, serialized);
       else await AsyncStorage.removeItem(key);
     });
   } else if (method !== "GET" && token) {

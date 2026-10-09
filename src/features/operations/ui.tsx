@@ -1,3 +1,5 @@
+import {ThemedText} from "../../theme/ThemedText";
+import { Notice } from "../../components/Notice";
 import type { ReactNode } from "react";
 import {
   ActivityIndicator,
@@ -6,23 +8,26 @@ import {
   Text,
   View,
 } from "react-native";
-import { api } from "../../api";
+import { api, type ApiRequestOptions } from "../../api";
 export { confirmAction } from "../../components/ConfirmationDialog";
 import type { NumericValue, Paginated } from "./types";
+import {useTheme,useThemedStyles} from "../../theme/ThemeProvider";
+import type {Theme} from "../../theme/tokens";
 
-export async function fetchPage<T>(path: string, token: string, page = 1): Promise<Paginated<T>> {
+export async function fetchPage<T>(path: string, token: string, page = 1, options: ApiRequestOptions = {}): Promise<Paginated<T>> {
   const separator = path.includes("?") ? "&" : "?";
-  return api<Paginated<T>>(`${path}${separator}page=${page}`, token);
+  return api<Paginated<T>>(`${path}${separator}page=${page}`, token, options);
 }
 
-export async function fetchAllPages<T>(path: string, token: string): Promise<T[]> {
-  const first = await fetchPage<T>(path, token);
+export async function fetchAllPages<T>(path: string, token: string, options: ApiRequestOptions = {}): Promise<T[]> {
+  const first = await fetchPage<T>(path, token, 1, options);
   const lastPage = Math.max(1, Number(first.last_page) || 1);
   const remaining: Paginated<T>[] = [];
   for (let page = 2; page <= lastPage; page += 1) {
     // Catalog data is occasionally needed in full, but requests stay bounded so
     // a large catalog cannot fan out into dozens of simultaneous API calls.
-    remaining.push(await fetchPage<T>(path, token, page));
+    if (options.signal?.aborted) throw new Error("Carga cancelada");
+    remaining.push(await fetchPage<T>(path, token, page, options));
   }
   const unique = new Map<number | string, T>();
   [first, ...remaining].forEach((page) => page.data.forEach((item, index) => {
@@ -94,6 +99,7 @@ export function Tabs({
   items: { key: string; label: string }[];
   onChange: (key: string) => void;
 }) {
+  const ops=useOpsStyles();
   return <View style={ops.tabs}>
     {items.map((item) => <Pressable
       accessibilityRole="button"
@@ -101,41 +107,43 @@ export function Tabs({
       onPress={() => onChange(item.key)}
       style={[ops.tab, active === item.key && ops.tabActive]}
     >
-      <Text style={[ops.tabText, active === item.key && ops.tabTextActive]}>{item.label}</Text>
+      <ThemedText style={[ops.tabText, active === item.key && ops.tabTextActive]}>{item.label}</ThemedText>
     </Pressable>)}
   </View>;
 }
 
-export function Section({ title, subtitle, children }: { title: string; subtitle?: string; children: ReactNode }) {
-  return <View style={ops.section}>
+export function Section({ title, subtitle, children, compact = false }: { title: string; subtitle?: string; children: ReactNode; compact?: boolean }) {
+  const ops=useOpsStyles();
+  return <View style={[ops.section, compact && ops.sectionCompact]}>
     <View style={ops.sectionHeader}>
-      <Text style={ops.sectionTitle}>{title}</Text>
-      {!!subtitle && <Text style={ops.sectionDescription}>{subtitle}</Text>}
+      <ThemedText style={ops.sectionTitle}>{title}</ThemedText>
+      {!!subtitle && <ThemedText style={ops.sectionDescription}>{subtitle}</ThemedText>}
     </View>
     {children}
   </View>;
 }
 
 export function EmptyState({ text = "Todavía no hay registros." }: { text?: string }) {
-  return <Text style={ops.empty}>{text}</Text>;
+  const ops=useOpsStyles();
+  return <ThemedText style={ops.empty}>{text}</ThemedText>;
 }
 
 export function LoadingState({ text = "Cargando información..." }: { text?: string }) {
+  const {theme}=useTheme();const ops=useOpsStyles();
   return <View style={ops.loading}>
-    <ActivityIndicator color="#d94f36" />
-    <Text style={ops.muted}>{text}</Text>
+    <ActivityIndicator color={theme.colors.primary} />
+    <ThemedText style={ops.muted}>{text}</ThemedText>
   </View>;
 }
 
 export function Feedback({ error, message }: { error?: string; message?: string }) {
-  return <>
-    {!!error && <View style={ops.errorBox}><Text style={ops.error}>{error}</Text></View>}
-    {!!message && <View style={ops.noticeBox}><Text style={ops.notice}>{message}</Text></View>}
-  </>;
+  return <><Notice kind="error" message={error}/><Notice kind="success" message={message}/></>;
 }
 
-export const ops = StyleSheet.create({
-  screen: { gap: 18 },
+export function useOpsStyles(){return useThemedStyles(createOpsStyles);}
+export const createOpsStyles = (theme:Theme)=>StyleSheet.create({
+  screen: { gap: 20 },
+  screenMobile: { gap: 12 },
   toolbar: {
     alignItems: "center",
     flexDirection: "row",
@@ -143,60 +151,65 @@ export const ops = StyleSheet.create({
     gap: 10,
     justifyContent: "space-between",
   },
-  tabs: { backgroundColor: "#f4f6f8", borderRadius: 14, flexDirection: "row", flexWrap: "wrap", gap: 6, padding: 5 },
-  tab: { alignItems: "center", backgroundColor: "#eceff2", borderRadius: 10, justifyContent: "center", minHeight: 44, paddingHorizontal: 14, paddingVertical: 10 },
-  tabActive: { backgroundColor: "#d94f36" },
-  tabText: { color: "#515861", fontWeight: "700" },
-  tabTextActive: { color: "white" },
-  section: { backgroundColor: "white", borderColor: "#e7e9ec", borderRadius: 20, borderWidth: 1, gap: 14, padding: 20 },
-  sectionHeader: { borderBottomColor: "#e7e9ec", borderBottomWidth: 1, gap: 4, marginBottom: 2, paddingBottom: 12 },
-  sectionTitle: { color: "#20242a", fontSize: 20, fontWeight: "900" },
-  sectionDescription: { color: "#747b85", lineHeight: 19 },
-  subtitle: { color: "#20242a", fontSize: 16, fontWeight: "800" },
-  card: { backgroundColor: "white", borderColor: "#e7e9ec", borderRadius: 16, borderWidth: 1, gap: 9, marginBottom: 10, padding: 16 },
-  insetCard: { backgroundColor: "#f4f6f8", borderColor: "#e7e9ec", borderRadius: 12, borderWidth: 1, gap: 7, padding: 13 },
+  toolbarMobile: { alignItems: "stretch", flexDirection: "column" },
+  tabs: { backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.pill, flexDirection: "row", flexWrap: "wrap", gap: 6, padding: 5 },
+  tab: { alignItems: "center", backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.pill, justifyContent: "center", minHeight: theme.control.minTouch, paddingHorizontal: 18, paddingVertical: 10 },
+  tabActive: { ...theme.shadows.surface, backgroundColor: theme.colors.primary },
+  tabText: { color: theme.colors.textMuted, fontWeight: "700" },
+  tabTextActive: { color: theme.colors.primaryText },
+  section: { ...theme.shadows.surface, backgroundColor: theme.colors.surfaceRaised, borderColor: theme.colors.border, borderRadius: theme.radius.section, borderWidth: 1, gap: 16, padding: 22 },
+  sectionCompact: { borderRadius: theme.radius.card, gap: 13, padding: 16 },
+  sectionHeader: { gap: 5, marginBottom: 2, paddingBottom: 4 },
+  sectionTitle: { color: theme.colors.text, ...theme.typography.heading },
+  sectionDescription: { color: theme.colors.textMuted, lineHeight: 19 * theme.fontScale },
+  subtitle: { color: theme.colors.text, fontSize: 16 * theme.fontScale, fontWeight: "800" },
+  card: { ...theme.shadows.surface, backgroundColor: theme.colors.surfaceRaised, borderColor: theme.colors.border, borderRadius: theme.radius.card, borderWidth: 1, gap: 10, marginBottom: 10, padding: 17 },
+  insetCard: { backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.control, gap: 8, padding: 14 },
   row: { alignItems: "flex-start", flexDirection: "row", flexWrap: "wrap", gap: 10, justifyContent: "space-between" },
   rowGrow: { flex: 1, minWidth: 180 },
   inline: { alignItems: "flex-start", flexDirection: "row", gap: 10 },
   inlineCompact: { alignItems: "stretch", flexDirection: "column", width: "100%" },
   fieldGrow: { flex: 1, minWidth: 0 },
-  label: { color: "#30353c", fontSize: 13, fontWeight: "800", marginTop: 2 },
-  muted: { color: "#747b85" },
-  strong: { color: "#20242a", fontSize: 16, fontWeight: "900" },
-  value: { color: "#d94f36", fontSize: 20, fontWeight: "900" },
+  label: { color: theme.colors.text, fontSize: 13 * theme.fontScale, fontWeight: "800", marginTop: 2 },
+  muted: { color: theme.colors.textMuted },
+  strong: { color: theme.colors.text, fontSize: 16 * theme.fontScale, fontWeight: "900" },
+  value: { color: theme.colors.primary, fontSize: 20 * theme.fontScale, fontWeight: "900" },
   input: {
-    backgroundColor: "white",
-    borderColor: "#d9dde2",
-    borderRadius: 12,
+    backgroundColor: theme.colors.surfaceRaised,
+    borderColor: theme.colors.border,
+    borderRadius: theme.radius.control,
     borderWidth: 1,
-    minHeight: 50,
+    minHeight: theme.control.minTouch,
     paddingHorizontal: 14,
     paddingVertical: 10,
   },
   textArea: { minHeight: 76, textAlignVertical: "top" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 7 },
-  chip: { alignItems: "center", backgroundColor: "#eef0f3", borderRadius: 10, justifyContent: "center", minHeight: 42, paddingHorizontal: 12, paddingVertical: 9 },
-  chipActive: { backgroundColor: "#ffe4de" },
-  chipDisabled: { opacity: 0.45 },
-  button: { alignItems: "center", backgroundColor: "#d94f36", borderRadius: 11, justifyContent: "center", minHeight: 47, paddingHorizontal: 14, paddingVertical: 10 },
-  buttonText: { color: "white", fontWeight: "800" },
-  outlineButton: { borderColor: "#d94f36", borderRadius: 10, borderWidth: 1, minHeight: 45, paddingHorizontal: 13, paddingVertical: 10 },
-  outlineText: { color: "#d94f36", fontWeight: "800" },
-  dangerButton: { borderColor: "#a82e20", borderRadius: 10, borderWidth: 1, minHeight: 43, paddingHorizontal: 13, paddingVertical: 10 },
-  dangerText: { color: "#a82e20", fontWeight: "800" },
-  disabled: { opacity: 0.45 },
-  statusGood: { color: "#287347", fontWeight: "800" },
-  statusWarning: { color: "#9a5b19", fontWeight: "800" },
-  statusDanger: { color: "#a82e20", fontWeight: "800" },
-  badge: { alignSelf: "flex-start", backgroundColor: "#efe3d6", borderRadius: 7, overflow: "hidden", paddingHorizontal: 8, paddingVertical: 5 },
-  noticeBox: { backgroundColor: "#fff1cc", borderRadius: 9, padding: 11 },
-  notice: { color: "#5f4918", fontWeight: "600" },
-  errorBox: { backgroundColor: "#fbe3dd", borderColor: "#e4a496", borderRadius: 9, borderWidth: 1, padding: 11 },
-  error: { color: "#a82e20", fontWeight: "700" },
+  chip: { alignItems: "center", backgroundColor: theme.colors.surfaceMuted, borderColor: "transparent", borderRadius: theme.radius.pill, borderWidth: 1, justifyContent: "center", minHeight: theme.control.minTouch, paddingHorizontal: 16, paddingVertical: 10 },
+  chipActive: { backgroundColor: theme.colors.primarySurface, borderColor: theme.colors.primary },
+  chipDisabled: { opacity: theme.control.disabledOpacity },
+  button: { ...theme.shadows.surface, alignItems: "center", backgroundColor: theme.colors.primary, borderRadius: theme.radius.pill, justifyContent: "center", minHeight: theme.control.minTouch, paddingHorizontal: 20, paddingVertical: 11 },
+  buttonText: { color: theme.colors.primaryText, fontWeight: "800" },
+  outlineButton: { backgroundColor: theme.colors.primarySurface, borderColor: theme.colors.primarySurface, borderRadius: theme.radius.pill, borderWidth: 1, minHeight: theme.control.minTouch, paddingHorizontal: 18, paddingVertical: 11 },
+  fullWidthButton: { alignItems: "center", width: "100%" },
+  outlineText: { color: theme.colors.primary, fontWeight: "800" },
+  dangerButton: { backgroundColor: theme.colors.dangerSurface, borderColor: theme.colors.dangerSurface, borderRadius: theme.radius.pill, borderWidth: 1, justifyContent: "center", minHeight: theme.control.minTouch, paddingHorizontal: 18, paddingVertical: 11 },
+  inlineTextAction: { justifyContent: "center", minHeight: theme.control.minTouch, paddingHorizontal: 8 },
+  dangerText: { color: theme.colors.danger, fontWeight: "800" },
+  disabled: { opacity: theme.control.disabledOpacity },
+  statusGood: { color: theme.colors.successText, fontWeight: "800" },
+  statusWarning: { color: theme.colors.warningText, fontWeight: "800" },
+  statusDanger: { color: theme.colors.danger, fontWeight: "800" },
+  badge: { alignSelf: "flex-start", backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.pill, overflow: "hidden", paddingHorizontal: 10, paddingVertical: 6 },
+  noticeBox: { backgroundColor: theme.colors.warningSurface, borderRadius: theme.radius.control, padding: 12 },
+  notice: { color: theme.colors.warningText, fontWeight: "600" },
+  errorBox: { backgroundColor: theme.colors.dangerSurface, borderColor: theme.colors.danger, borderRadius: theme.radius.control, borderWidth: 1, padding: 12 },
+  error: { color: theme.colors.danger, fontWeight: "700" },
   loading: { alignItems: "center", gap: 9, padding: 30 },
-  empty: { color: "#796b61", padding: 24, textAlign: "center" },
-  divider: { backgroundColor: "#e7e9ec", height: 1, marginVertical: 3 },
+  empty: { color: theme.colors.textMuted, padding: 24, textAlign: "center" },
+  divider: { backgroundColor: theme.colors.border, height: 1, marginVertical: 3 },
   metrics: { flexDirection: "row", flexWrap: "wrap", gap: 9 },
-  metric: { backgroundColor: "white", borderColor: "#e7e9ec", borderRadius: 14, borderWidth: 1, flexGrow: 1, gap: 3, minWidth: 130, padding: 14 },
-  metricValue: { color: "#d94f36", fontSize: 22, fontWeight: "900" },
+  metricsMobile: { flexDirection: "column" },
+  metric: { ...theme.shadows.surface, backgroundColor: theme.colors.surfaceRaised, borderColor: theme.colors.border, borderRadius: theme.radius.card, borderWidth: 1, flexGrow: 1, gap: 4, minWidth: 130, padding: 16 },
+  metricValue: { color: theme.colors.primary, fontSize: 22 * theme.fontScale, fontWeight: "900" },
 });

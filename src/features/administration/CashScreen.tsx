@@ -1,3 +1,6 @@
+import {ThemedText} from "../../theme/ThemedText";
+import {useTheme,useThemedStyles} from "../../theme/ThemeProvider";
+import type {Theme} from "../../theme/tokens";
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
@@ -53,6 +56,8 @@ function money(value: number | null | undefined): string {
 }
 
 export function CashScreen({ token }: { token: string }) {
+  const styles=useThemedStyles(createStyles);
+  const {theme}=useTheme();
   const [day, setDay] = useState<CashDay | null>(null);
   const [history, setHistory] = useState<CashDayRow[]>([]);
   const [openingAmount, setOpeningAmount] = useState("0");
@@ -146,18 +151,18 @@ export function CashScreen({ token }: { token: string }) {
     }
   }
 
-  if (busy && !day) return <ActivityIndicator color="#cf4b32" style={styles.loader} />;
+  if (busy && !day) return <ActivityIndicator color={theme.colors.primary} style={styles.loader} />;
   const summary = day?.summary ?? {};
 
   return <View style={styles.container}>
-    {!!message && <Text style={styles.notice}>{message}</Text>}
+    {!!message && <ThemedText style={styles.notice}>{message}</ThemedText>}
     <View style={styles.card}>
       <View style={styles.headingRow}>
         <View>
-          <Text style={styles.title}>Caja de {day?.date ?? "hoy"}</Text>
-          <Text style={styles.muted}>Estado: {day?.status === "open" ? "abierta" : day?.status === "closed" ? "cerrada" : "sin abrir"}</Text>
+          <ThemedText style={styles.title}>Caja de {day?.date ?? "hoy"}</ThemedText>
+          <ThemedText style={styles.muted}>Estado: {day?.status === "open" ? "abierta" : day?.status === "closed" ? "cerrada" : "sin abrir"}</ThemedText>
         </View>
-        <Pressable disabled={busy} style={styles.outlineButton} onPress={() => load()}><Text style={styles.outlineText}>Actualizar</Text></Pressable>
+        <Pressable disabled={busy} style={styles.outlineButton} onPress={() => load()}><ThemedText style={styles.outlineText}>Actualizar</ThemedText></Pressable>
       </View>
       <View style={styles.metrics}>
         <Metric label="Ventas" value={money(summary.gross_sales)} />
@@ -170,78 +175,79 @@ export function CashScreen({ token }: { token: string }) {
     </View>
 
     {day?.status === "not_opened" && <View style={styles.card}>
-      <Text style={styles.title}>Abrir caja</Text>
+      <ThemedText style={styles.title}>Abrir caja</ThemedText>
       <TextInput style={styles.input} value={openingAmount} onChangeText={setOpeningAmount} keyboardType="decimal-pad" placeholder="Fondo inicial" />
-      <Pressable disabled={busy || Number(openingAmount) < 0} style={[styles.primary, busy && styles.disabled]} onPress={openDay}><Text style={styles.primaryText}>Abrir caja del día</Text></Pressable>
+      <Pressable disabled={busy || Number(openingAmount) < 0} style={[styles.primary, busy && styles.disabled]} onPress={openDay}><ThemedText style={styles.primaryText}>Abrir caja del día</ThemedText></Pressable>
     </View>}
 
     {day?.status === "open" && <>
       <View style={styles.card}>
-        <Text style={styles.title}>{movementType === "expense" ? "Registrar egreso de caja" : "Registrar entrada de caja"}</Text>
-        <Text style={styles.muted}>Controla el dinero que {movementType === "expense" ? "sale para gastos" : "entra fuera de una venta"}. Quedará registrado con el usuario y la hora.</Text>
+        <ThemedText style={styles.title}>{movementType === "expense" ? "Registrar egreso de caja" : "Registrar entrada de caja"}</ThemedText>
+        <ThemedText style={styles.muted}>Controla el dinero que {movementType === "expense" ? "sale para gastos" : "entra fuera de una venta"}. Quedará registrado con el usuario y la hora.</ThemedText>
         <View style={styles.actions}>
-          {(["income", "expense"] as const).map((type) => <Pressable key={type} onPress={() => setMovementType(type)} style={[styles.choice, movementType === type && styles.choiceActive]}><Text>{type === "income" ? "Entrada" : "Egreso"}</Text></Pressable>)}
+          {(["income", "expense"] as const).map((type) => <Pressable key={type} onPress={() => setMovementType(type)} style={[styles.choice, movementType === type && styles.choiceActive]}><ThemedText>{type === "income" ? "Entrada" : "Egreso"}</ThemedText></Pressable>)}
         </View>
         <TextInput style={styles.input} value={movementAmount} onChangeText={setMovementAmount} keyboardType="decimal-pad" placeholder="Monto" />
         <TextInput style={styles.input} value={movementCategory} onChangeText={setMovementCategory} placeholder={movementType === "expense" ? "Concepto del egreso (ej. gas, transporte)" : "Concepto de la entrada"} />
         <TextInput style={styles.input} value={movementDescription} onChangeText={setMovementDescription} placeholder={movementType === "expense" ? "Motivo del gasto" : "Descripción opcional"} />
-        <Pressable disabled={busy || Number(movementAmount) <= 0 || !movementCategory.trim() || (movementType === "expense" && !movementDescription.trim())} style={[styles.primary, (busy || Number(movementAmount) <= 0 || !movementCategory.trim() || (movementType === "expense" && !movementDescription.trim())) && styles.disabled]} onPress={addMovement}><Text style={styles.primaryText}>{movementType === "expense" ? "Registrar egreso" : "Registrar entrada"}</Text></Pressable>
+        <Pressable disabled={busy || Number(movementAmount) <= 0 || !movementCategory.trim() || (movementType === "expense" && !movementDescription.trim())} style={[styles.primary, (busy || Number(movementAmount) <= 0 || !movementCategory.trim() || (movementType === "expense" && !movementDescription.trim())) && styles.disabled]} onPress={addMovement}><ThemedText style={styles.primaryText}>{movementType === "expense" ? "Registrar egreso" : "Registrar entrada"}</ThemedText></Pressable>
       </View>
       <View style={styles.card}>
-        <Text style={styles.title}>Cerrar caja</Text>
-        <Text style={styles.muted}>Cuenta físicamente el efectivo antes de cerrar. El sistema calculará la diferencia contra {money(summary.expected_cash)}.</Text>
+        <ThemedText style={styles.title}>Cerrar caja</ThemedText>
+        <ThemedText style={styles.muted}>Cuenta físicamente el efectivo antes de cerrar. El sistema calculará la diferencia contra {money(summary.expected_cash)}.</ThemedText>
         <TextInput style={styles.input} value={actualAmount} onChangeText={setActualAmount} keyboardType="decimal-pad" placeholder="Efectivo real contado" />
-        <Pressable disabled={busy || actualAmount.trim() === "" || Number(actualAmount) < 0} style={[styles.dangerButton, (busy || actualAmount.trim() === "") && styles.disabled]} onPress={closeDay}><Text style={styles.dangerText}>Cerrar caja</Text></Pressable>
+        <Pressable disabled={busy || actualAmount.trim() === "" || Number(actualAmount) < 0} style={[styles.dangerButton, (busy || actualAmount.trim() === "") && styles.disabled]} onPress={closeDay}><ThemedText style={styles.dangerText}>Cerrar caja</ThemedText></Pressable>
       </View>
     </>}
 
     {!!day?.movements.length && <View style={styles.card}>
-      <Text style={styles.title}>Movimientos del día</Text>
+      <ThemedText style={styles.title}>Movimientos del día</ThemedText>
       {day.movements.map((movement) => <View key={movement.id} style={styles.row}>
-        <View style={styles.flex}><Text style={styles.rowTitle}>{movement.category}</Text><Text style={styles.muted}>{movement.description || movement.user?.name || "Sin descripción"}</Text></View>
-        <Text style={movement.type === "income" ? styles.income : styles.expense}>{movement.type === "income" ? "+" : "−"}{money(movement.amount)}</Text>
+        <View style={styles.flex}><ThemedText style={styles.rowTitle}>{movement.category}</ThemedText><ThemedText style={styles.muted}>{movement.description || movement.user?.name || "Sin descripción"}</ThemedText></View>
+        <ThemedText style={movement.type === "income" ? styles.income : styles.expense}>{movement.type === "income" ? "+" : "−"}{money(movement.amount)}</ThemedText>
       </View>)}
     </View>}
 
     <View style={styles.card}>
-      <Text style={styles.title}>Historial de caja</Text>
+      <ThemedText style={styles.title}>Historial de caja</ThemedText>
       {history.length ? history.map((item) => <View key={item.id} style={styles.row}>
-        <View style={styles.flex}><Text style={styles.rowTitle}>{item.date}</Text><Text style={styles.muted}>{item.status === "closed" ? "Cerrada" : "Abierta"} · {item.movements_count} movimientos</Text></View>
-        <Text style={styles.rowTitle}>{item.status === "closed" ? money(item.actual_amount) : money(item.opening_amount)}</Text>
-      </View>) : <Text style={styles.muted}>Aún no hay cortes registrados.</Text>}
+        <View style={styles.flex}><ThemedText style={styles.rowTitle}>{item.date}</ThemedText><ThemedText style={styles.muted}>{item.status === "closed" ? "Cerrada" : "Abierta"} · {item.movements_count} movimientos</ThemedText></View>
+        <ThemedText style={styles.rowTitle}>{item.status === "closed" ? money(item.actual_amount) : money(item.opening_amount)}</ThemedText>
+      </View>) : <ThemedText style={styles.muted}>Aún no hay cortes registrados.</ThemedText>}
     </View>
   </View>;
 }
 
 function Metric({ label, value }: { label: string; value: string }) {
-  return <View style={styles.metric}><Text style={styles.metricValue}>{value}</Text><Text style={styles.muted}>{label}</Text></View>;
+  const styles=useThemedStyles(createStyles);
+  return <View style={styles.metric}><ThemedText style={styles.metricValue}>{value}</ThemedText><ThemedText style={styles.muted}>{label}</ThemedText></View>;
 }
 
-const styles = StyleSheet.create({
+const createStyles=(theme:Theme)=>StyleSheet.create({
   container: { gap: 14 },
   loader: { margin: 40 },
-  card: { backgroundColor: "#fffdfa", borderRadius: 16, gap: 12, padding: 18 },
+  card: { ...theme.shadows.surface, backgroundColor: theme.colors.surface, borderRadius: theme.radius.section, gap: 14, padding: 20 },
   headingRow: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 12, justifyContent: "space-between" },
-  title: { color: "#29231f", fontSize: 18, fontWeight: "900" },
-  muted: { color: "#796b61" },
+  title: { color: theme.colors.text, fontSize: 18 * theme.fontScale, fontWeight: "900" },
+  muted: { color: theme.colors.textMuted },
   metrics: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  metric: { backgroundColor: "#f7f2e9", borderRadius: 12, flexGrow: 1, minWidth: 145, padding: 14 },
-  metricValue: { color: "#cf4b32", fontSize: 22, fontWeight: "900" },
-  input: { backgroundColor: "white", borderColor: "#ddd1c5", borderRadius: 11, borderWidth: 1, minHeight: 50, paddingHorizontal: 14 },
+  metric: { backgroundColor: theme.colors.primarySurface, borderRadius: theme.radius.card, flexGrow: 1, minWidth: 145, padding: 14 },
+  metricValue: { color: theme.colors.primary, fontSize: 22 * theme.fontScale, fontWeight: "900" },
+  input: { color:theme.colors.text, backgroundColor: theme.colors.surfaceMuted, borderColor: theme.colors.border, borderRadius: theme.radius.control, borderWidth: 1, minHeight: theme.control.minTouch, paddingHorizontal: 14 },
   actions: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  choice: { backgroundColor: "#eee4da", borderRadius: 9, padding: 11 },
-  choiceActive: { backgroundColor: "#f3b19f" },
-  primary: { alignItems: "center", backgroundColor: "#cf4b32", borderRadius: 11, minHeight: 50, justifyContent: "center", padding: 12 },
-  primaryText: { color: "white", fontWeight: "800" },
-  outlineButton: { borderColor: "#cf4b32", borderRadius: 10, borderWidth: 1, padding: 10 },
-  outlineText: { color: "#cf4b32", fontWeight: "800" },
-  dangerButton: { alignItems: "center", borderColor: "#a82e20", borderRadius: 11, borderWidth: 1, minHeight: 50, justifyContent: "center" },
-  dangerText: { color: "#a82e20", fontWeight: "800" },
-  disabled: { opacity: 0.45 },
-  notice: { backgroundColor: "#fff1cc", borderRadius: 10, color: "#5f4918", padding: 12 },
-  row: { alignItems: "center", borderTopColor: "#eee4da", borderTopWidth: 1, flexDirection: "row", gap: 12, justifyContent: "space-between", paddingVertical: 12 },
-  rowTitle: { color: "#29231f", fontWeight: "800" },
+  choice: { backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.pill, minHeight: theme.control.minTouch, justifyContent: "center", padding: 11 },
+  choiceActive: { backgroundColor: theme.colors.primarySurface },
+  primary: { ...theme.shadows.surface, alignItems: "center", backgroundColor: theme.colors.primary, borderRadius: theme.radius.pill, minHeight: theme.control.minTouch, justifyContent: "center", padding: 12 },
+  primaryText: { color: theme.colors.primaryText, fontWeight: "800" },
+  outlineButton: { backgroundColor: theme.colors.primarySurface, borderColor: theme.colors.primarySurface, borderRadius: theme.radius.pill, borderWidth: 1, minHeight: theme.control.minTouch, padding: 10 },
+  outlineText: { color: theme.colors.primary, fontWeight: "800" },
+  dangerButton: { alignItems: "center", backgroundColor: theme.colors.dangerSurface, borderColor: theme.colors.dangerSurface, borderRadius: theme.radius.pill, borderWidth: 1, minHeight: theme.control.minTouch, justifyContent: "center" },
+  dangerText: { color: theme.colors.danger, fontWeight: "800" },
+  disabled: { opacity: theme.control.disabledOpacity },
+  notice: { backgroundColor: theme.colors.warningSurface, borderRadius: 10, color: theme.colors.warningText, padding: 12 },
+  row: { alignItems: "center", borderTopColor: theme.colors.border, borderTopWidth: 1, flexDirection: "row", gap: 12, justifyContent: "space-between", paddingVertical: 12 },
+  rowTitle: { color: theme.colors.text, fontWeight: "800" },
   flex: { flex: 1 },
-  income: { color: "#287347", fontWeight: "900" },
-  expense: { color: "#a82e20", fontWeight: "900" },
+  income: { color: theme.colors.successText, fontWeight: "900" },
+  expense: { color: theme.colors.danger, fontWeight: "900" },
 });

@@ -1,3 +1,11 @@
+import {ThemedText} from "../../theme/ThemedText";
+import {useTheme} from "../../theme/ThemeProvider";
+import { operationError } from "../../forms/validation";
+import { loadErrorMessage } from "../../loadState";
+import { RemoteListStatus } from "../../components/RemoteListStatus";
+import { Pagination } from "../../components/RemoteListStatus";
+import { usePaginatedResource, useRemoteResource } from "../../hooks/useRemoteResource";
+import { useNavigationField } from "../../navigation/NavigationContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, Text, useWindowDimensions, View } from "react-native";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
@@ -9,6 +17,8 @@ import type {
   InventoryAlert,
   InventoryBatch,
   InventoryMovement,
+  InventoryItem,
+  InventorySummary,
   Unit,
 } from "./types";
 import {
@@ -24,11 +34,19 @@ import {
   localDateValue,
   moneyText,
   numberValue,
-  ops,
+  useOpsStyles,
   quantityText,
   Section,
   Tabs,
 } from "./ui";
+
+const sourceLabels = { ingredients: "los insumos", batches: "los lotes", alerts: "las alertas", movements: "los movimientos", units: "las unidades", types: "los tipos de insumo" };
+type SourceKey = keyof typeof sourceLabels;
+type SourceState = { loading: boolean; error: string; loaded: boolean };
+const sourceKeys = Object.keys(sourceLabels) as SourceKey[];
+function initialSources(): Record<SourceKey, SourceState> {
+  return Object.fromEntries(sourceKeys.map((key) => [key, { loading: false, error: "", loaded: false }])) as Record<SourceKey, SourceState>;
+}
 
 type InventoryTab = "stock" | "batches" | "alerts" | "movements" | "admin";
 type AdjustmentReason = "waste" | "expiry" | "preparation_error" | "gift" | "internal_use" | "manual" | "loss" | "correction";
@@ -45,21 +63,17 @@ const adjustmentReasons: { key: AdjustmentReason; label: string; removal: boolea
   { key: "correction", label: "Corrección", removal: false },
 ];
 
-function stockLevel(ingredient: Ingredient): "good" | "warning" | "danger" {
-  const stock = numberValue(ingredient.current_stock);
-  if (stock <= numberValue(ingredient.critical_stock)) return "danger";
-  if (stock <= numberValue(ingredient.minimum_stock)) return "warning";
-  return "good";
-}
-
 function batchIsExpired(batch: InventoryBatch): boolean {
   return Boolean(batch.expires_at && batch.expires_at.slice(0, 10) < localDateValue());
 }
 
 export function InventoryScreen({ token, isAdministrator }: { token: string; isAdministrator: boolean }) {
+  const {theme}=useTheme();
+  const ops=useOpsStyles();
   const { width } = useWindowDimensions();
   const compact = width < 980;
-  const [tab, setTab] = useState<InventoryTab>("stock");
+  const [navigationContext,setNavigationContext]=useNavigationField("inventory",{tab:"stock" as InventoryTab,search:"",status:"" as "" | "available" | "low" | "critical" | "out",active:"1" as "1"|"0"|"",page:1,detailId:null as number|null});
+  const [tab, setTab] = useState<InventoryTab>(navigationContext.tab);
   const [ingredients, setIngredients] = useState<Ingredient[]>([]);
   const [batches, setBatches] = useState<InventoryBatch[]>([]);
   const [alerts, setAlerts] = useState<InventoryAlert[]>([]);
@@ -72,12 +86,27 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
   const [loadingMoreMovements, setLoadingMoreMovements] = useState(false);
   const [units, setUnits] = useState<Unit[]>([]);
   const [ingredientTypes, setIngredientTypes] = useState<IngredientType[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [sources, setSources] = useState(initialSources);
+  const refreshing = sourceKeys.some((key) => sources[key].loading);
+  const [batchTotal, setBatchTotal] = useState(0);
+  const [movementTotal, setMovementTotal] = useState(0);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const requestId = useRef(0);
+  const [inventorySearch, setInventorySearch] = useState(navigationContext.search);
+  const [inventoryStatus, setInventoryStatus] = useState<"" | "available" | "low" | "critical" | "out">(navigationContext.status);
+  const [inventoryActive, setInventoryActive] = useState<"1" | "0" | "">(navigationContext.active);
+  const [detailId, setDetailId] = useState<number | null>(navigationContext.detailId);
+  const inventoryEndpoint = `/inventory/items?${new URLSearchParams({
+    ...(inventoryStatus ? { status: inventoryStatus } : {}),
+    ...(inventoryActive ? { active: inventoryActive } : {}),
+  }).toString()}`;
+  const inventory = usePaginatedResource<InventoryItem>(inventoryEndpoint, token, "las existencias", 300, true,{search:navigationContext.search,page:navigationContext.page});
+  const summary = useRemoteResource<InventorySummary>("/inventory/summary", token, "el resumen de inventario", 0, true);
+  const detail = useRemoteResource<InventoryItem>(detailId ? `/inventory/items/${detailId}` : null, token, "el detalle del insumo");
+  const requestIds = useRef<Record<SourceKey, number>>({ ingredients: 0, batches: 0, alerts: 0, movements: 0, units: 0, types: 0 });
+  const controllers = useRef<Partial<Record<SourceKey, AbortController>>>({});
+  useEffect(()=>setNavigationContext({tab,search:inventory.search,status:inventoryStatus,active:inventoryActive,page:inventory.page,detailId}),[tab,inventory.search,inventoryStatus,inventoryActive,inventory.page,detailId]);
 
   const [editingIngredientId, setEditingIngredientId] = useState<number | null>(null);
   const [ingredientName, setIngredientName] = useState("");
@@ -122,94 +151,124 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
   const activeTypes = ingredientTypes.filter((type) => type.active);
   const ingredientById = useMemo(() => new Map(ingredients.map((ingredient) => [ingredient.id, ingredient])), [ingredients]);
 
-  async function load(initial = false): Promise<void> {
-    const currentRequest = ++requestId.current;
-    if (initial) setLoading(true);
-    else setRefreshing(true);
-    setError("");
+  async function loadSource(key: SourceKey, force = true): Promise<void> {
+    const revision = ++requestIds.current[key];
+    controllers.current[key]?.abort();
+    const controller = new AbortController();
+    controllers.current[key] = controller;
+    const options = { signal: controller.signal, ...(force ? { cache: "reload" as const } : {}) };
+    const current = () => revision === requestIds.current[key];
+    setSources((state) => ({ ...state, [key]: { ...state[key], loading: true, error: "" } }));
+    if (key === "batches") setLoadingMoreBatches(false);
+    if (key === "movements") setLoadingMoreMovements(false);
     try {
-      const [nextIngredients, nextBatches, nextAlerts, nextMovements, nextUnits, nextTypes] = await Promise.all([
-        fetchAllPages<Ingredient>("/ingredients", token),
-        fetchPage<InventoryBatch>("/inventory/batches", token),
-        api<InventoryAlert[]>("/inventory/alerts", token),
-        fetchPage<InventoryMovement>("/inventory/movements", token),
-        api<Unit[]>("/catalogs/units", token),
-        api<IngredientType[]>("/catalogs/ingredient-types", token),
-      ]);
-      if (currentRequest !== requestId.current) return;
-      setIngredients(nextIngredients);
-      setBatches(nextBatches.data);
-      setBatchPage(nextBatches.current_page);
-      setBatchLastPage(nextBatches.last_page);
-      setAlerts(nextAlerts);
-      setMovements(nextMovements.data);
-      setMovementPage(nextMovements.current_page);
-      setMovementLastPage(nextMovements.last_page);
-      setUnits(nextUnits);
-      setIngredientTypes(nextTypes);
-      setBaseUnitId((current) => current ?? nextUnits.find((unit) => unit.active)?.id ?? null);
-      setPresentationIngredientId((current) => current ?? nextIngredients.find((ingredient) => ingredient.active)?.id ?? null);
-      setAdjustmentBatchId((current) => current && nextBatches.data.some((batch) => batch.id === current)
-        ? current
-        : nextBatches.data[0]?.id ?? null);
-    } catch (loadError) {
-      if (currentRequest === requestId.current) setError((loadError as Error).message);
-    } finally {
-      if (currentRequest === requestId.current) {
-        setLoading(false);
-        setRefreshing(false);
+      switch (key) {
+        case "ingredients": {
+          const rows = await fetchAllPages<Ingredient>("/ingredients", token, options);
+          if (!current()) return;
+          setIngredients(rows);
+          setPresentationIngredientId((id) => id ?? rows.find((item) => item.active)?.id ?? null);
+          break;
+        }
+        case "batches": {
+          const page = await fetchPage<InventoryBatch>("/inventory/batches", token, 1, options);
+          if (!current()) return;
+          setBatches(page.data); setBatchPage(page.current_page); setBatchLastPage(page.last_page); setBatchTotal(page.total ?? page.data.length);
+          setAdjustmentBatchId((id) => id && page.data.some((item) => item.id === id) ? id : page.data[0]?.id ?? null);
+          break;
+        }
+        case "movements": {
+          const page = await fetchPage<InventoryMovement>("/inventory/movements", token, 1, options);
+          if (!current()) return;
+          setMovements(page.data); setMovementPage(page.current_page); setMovementLastPage(page.last_page); setMovementTotal(page.total ?? page.data.length);
+          break;
+        }
+        case "alerts": {
+          const rows = await api<InventoryAlert[]>("/inventory/alerts", token, options);
+          if (!current()) return;
+          setAlerts(rows); break;
+        }
+        case "units": {
+          const rows = await api<Unit[]>("/catalogs/units", token, options);
+          if (!current()) return;
+          setUnits(rows); setBaseUnitId((id) => id ?? rows.find((item) => item.active)?.id ?? null); break;
+        }
+        case "types": {
+          const rows = await api<IngredientType[]>("/catalogs/ingredient-types", token, options);
+          if (!current()) return;
+          setIngredientTypes(rows); break;
+        }
       }
+      if (current()) setSources((state) => ({ ...state, [key]: { loading: false, error: "", loaded: true } }));
+    } catch (error) {
+      if (current()) setSources((state) => ({ ...state, [key]: { ...state[key], loading: false, error: loadErrorMessage(sourceLabels[key], error) } }));
     }
   }
 
+  async function load(): Promise<void> {
+    summary.reload(); inventory.reload(); detail.reload();
+    const relevant: SourceKey[] = tab === "batches" ? ["batches"] : tab === "alerts" ? ["alerts"] : tab === "movements" ? ["movements"] : tab === "admin" ? ["ingredients", "units", "types", "batches"] : [];
+    await Promise.allSettled(relevant.map((key) => loadSource(key)));
+  }
+
   async function loadMoreBatches(): Promise<void> {
-    if (loadingMoreBatches || batchPage >= batchLastPage) return;
-    const currentRequest = requestId.current;
+    if (loadingMoreBatches || sources.batches.loading || batchPage >= batchLastPage) return;
+    const revision = requestIds.current.batches;
     setLoadingMoreBatches(true);
-    setError("");
+    setSources((state) => ({ ...state, batches: { ...state.batches, error: "" } }));
     try {
-      const next = await fetchPage<InventoryBatch>("/inventory/batches", token, batchPage + 1);
-      if (currentRequest !== requestId.current) return;
+      const next = await fetchPage<InventoryBatch>("/inventory/batches", token, batchPage + 1, { cache: "reload" });
+      if (revision !== requestIds.current.batches) return;
       setBatches((current) => appendUniqueById(current, next.data));
-      setBatchPage(next.current_page);
-      setBatchLastPage(next.last_page);
-    } catch (loadError) {
-      if (currentRequest === requestId.current) setError((loadError as Error).message);
+      setBatchPage(next.current_page); setBatchLastPage(next.last_page); setBatchTotal(next.total ?? next.data.length);
+    } catch (error) {
+      if (revision === requestIds.current.batches) setSources((state) => ({ ...state, batches: { ...state.batches, error: loadErrorMessage("más lotes", error) } }));
     } finally {
-      if (currentRequest === requestId.current) setLoadingMoreBatches(false);
+      if (revision === requestIds.current.batches) setLoadingMoreBatches(false);
     }
   }
 
   async function loadMoreMovements(): Promise<void> {
-    if (loadingMoreMovements || movementPage >= movementLastPage) return;
-    const currentRequest = requestId.current;
+    if (loadingMoreMovements || sources.movements.loading || movementPage >= movementLastPage) return;
+    const revision = requestIds.current.movements;
     setLoadingMoreMovements(true);
-    setError("");
+    setSources((state) => ({ ...state, movements: { ...state.movements, error: "" } }));
     try {
-      const next = await fetchPage<InventoryMovement>("/inventory/movements", token, movementPage + 1);
-      if (currentRequest !== requestId.current) return;
+      const next = await fetchPage<InventoryMovement>("/inventory/movements", token, movementPage + 1, { cache: "reload" });
+      if (revision !== requestIds.current.movements) return;
       setMovements((current) => appendUniqueById(current, next.data));
-      setMovementPage(next.current_page);
-      setMovementLastPage(next.last_page);
-    } catch (loadError) {
-      if (currentRequest === requestId.current) setError((loadError as Error).message);
+      setMovementPage(next.current_page); setMovementLastPage(next.last_page); setMovementTotal(next.total ?? next.data.length);
+    } catch (error) {
+      if (revision === requestIds.current.movements) setSources((state) => ({ ...state, movements: { ...state.movements, error: loadErrorMessage("más movimientos", error) } }));
     } finally {
-      if (currentRequest === requestId.current) setLoadingMoreMovements(false);
+      if (revision === requestIds.current.movements) setLoadingMoreMovements(false);
     }
   }
 
   useEffect(() => {
-    load(true);
-    return () => { requestId.current += 1; };
+    setIngredients([]); setBatches([]); setAlerts([]); setMovements([]); setUnits([]); setIngredientTypes([]);
+    setSources(initialSources());
+    return () => { sourceKeys.forEach((key) => { requestIds.current[key]++; controllers.current[key]?.abort(); }); };
   }, [token]);
+
+  useEffect(() => { inventory.setSearch(inventorySearch); }, [inventorySearch]);
+  useEffect(() => { inventory.setPage(1); }, [inventoryStatus, inventoryActive]);
+  useEffect(() => {
+    const keys: SourceKey[] = tab === "batches" ? ["batches"] : tab === "alerts" ? ["alerts"] : tab === "movements" ? ["movements"] : tab === "admin" ? ["ingredients", "units", "types", "batches"] : [];
+    void Promise.allSettled(keys.filter((key) => !sources[key].loaded && !sources[key].loading).map((key) => loadSource(key, false)));
+  }, [tab]);
+
+  const ready = (key: SourceKey) => sources[key].loaded && !sources[key].loading && !sources[key].error;
+  const sourceCount = { ingredients: ingredients.length, batches: batches.length, alerts: alerts.length, movements: movements.length, units: units.length, types: ingredientTypes.length };
 
   useEffect(() => {
     if (!selectedPresentationIngredient || !selectedPresentationBaseUnit) return;
     const currentUnit = units.find((unit) => unit.id === presentationUnitId);
     if (!currentUnit?.active || currentUnit.dimension !== selectedPresentationBaseUnit.dimension) {
+      if (editingPresentationId !== null && presentationUnitId !== null) return;
       setPresentationUnitId(units.find((unit) => unit.active && unit.dimension === selectedPresentationBaseUnit.dimension)?.id ?? null);
     }
-  }, [presentationIngredientId, units]);
+  }, [presentationIngredientId, units, editingPresentationId, presentationUnitId]);
 
   function resetIngredientForm(): void {
     setEditingIngredientId(null);
@@ -296,7 +355,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
       resetIngredientForm();
       await load();
     } catch (saveError) {
-      setError((saveError as Error).message);
+      setError(operationError(saveError, "guardar los cambios", true));
     } finally {
       setSaving(false);
     }
@@ -311,7 +370,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
       setMessage(`Insumo “${ingredient.name}” desactivado.`);
       await load();
     } catch (deactivateError) {
-      setError((deactivateError as Error).message);
+      setError(operationError(deactivateError, "guardar los cambios", true));
     } finally {
       setSaving(false);
     }
@@ -366,7 +425,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
       resetPresentationForm(selectedPresentationIngredient.id);
       await load();
     } catch (saveError) {
-      setError((saveError as Error).message);
+      setError(operationError(saveError, "guardar los cambios", true));
     } finally {
       setSaving(false);
     }
@@ -381,7 +440,7 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
       setMessage(`Presentación “${presentation.name}” desactivada.`);
       await load();
     } catch (deactivateError) {
-      setError((deactivateError as Error).message);
+      setError(operationError(deactivateError, "guardar los cambios", true));
     } finally {
       setSaving(false);
     }
@@ -424,153 +483,156 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
       setMessage("Ajuste registrado; el lote, movimientos y alertas fueron actualizados.");
       await load();
     } catch (adjustError) {
-      setError((adjustError as Error).message);
+      setError(operationError(adjustError, "guardar los cambios", true));
     } finally {
       setSaving(false);
     }
   }
-
-  const stockCounts = useMemo(() => ({
-    low: ingredients.filter((ingredient) => ingredient.active && stockLevel(ingredient) !== "good").length,
-    active: ingredients.filter((ingredient) => ingredient.active).length,
-    availableBatches: batches.filter((batch) => numberValue(batch.available_quantity) > 0 && !batchIsExpired(batch)).length,
-  }), [ingredients, batches]);
-
-  if (loading) return <LoadingState text="Cargando inventario, lotes, alertas y movimientos..." />;
 
   return <View style={ops.screen}>
     <View style={ops.toolbar}>
       <Tabs
         active={tab}
         items={[
-          { key: "stock", label: `Existencias (${ingredients.length})` },
-          { key: "batches", label: `Lotes (${batches.length})` },
-          { key: "alerts", label: `Alertas (${alerts.length})` },
+          { key: "stock", label: `Existencias (${inventory.data?.total ?? "…"})` },
+          { key: "batches", label: `Lotes (${sources.batches.loaded ? batchTotal : "…"})` },
+          { key: "alerts", label: `Alertas (${sources.alerts.loaded ? alerts.length : "…"})` },
           { key: "movements", label: "Movimientos" },
           ...(isAdministrator ? [{ key: "admin", label: "Administrar" }] : []),
         ]}
         onChange={(key) => setTab(key as InventoryTab)}
       />
       <Pressable disabled={refreshing} onPress={() => load()} style={[ops.outlineButton, refreshing && ops.disabled]}>
-        <Text style={ops.outlineText}>{refreshing ? "Actualizando..." : "Actualizar todo"}</Text>
+        <ThemedText style={ops.outlineText}>{refreshing ? "Actualizando..." : "Actualizar todo"}</ThemedText>
       </Pressable>
     </View>
     <Feedback error={error} message={message} />
+    {sourceKeys.filter((key) => sources[key].error).map((key) => <RemoteListStatus key={key} {...sources[key]} count={sourceCount[key]} emptyText="" onRetry={() => loadSource(key)} />)}
+    {tab !== "stock" && sources[tab === "admin" ? "units" : tab].loading && <LoadingState text="Cargando esta sección..." />}
+    {tab === "admin" && refreshing && <ThemedText style={ops.muted}>Algunas opciones estarán disponibles cuando termine su carga.</ThemedText>}
 
     {tab === "stock" && <>
-      <View style={ops.metrics}>
-        <View style={ops.metric}><Text style={ops.metricValue}>{stockCounts.active}</Text><Text style={ops.muted}>Insumos activos</Text></View>
-        <View style={ops.metric}><Text style={stockCounts.low ? ops.statusDanger : ops.statusGood}>{stockCounts.low}</Text><Text style={ops.muted}>Bajo mínimo/crítico</Text></View>
-        <View style={ops.metric}><Text style={ops.metricValue}>{stockCounts.availableBatches}</Text><Text style={ops.muted}>Lotes utilizables cargados</Text></View>
-      </View>
-      {!ingredients.length ? <EmptyState text="No hay insumos registrados." /> : ingredients.map((ingredient) => {
-        const level = stockLevel(ingredient);
-        const unit = ingredient.base_unit?.symbol ?? "u";
-        return <View style={[ops.card, !ingredient.active && ops.disabled]} key={ingredient.id}>
-          <View style={ops.row}>
-            <View style={ops.rowGrow}>
-              <Text style={ops.strong}>{ingredient.name} {!ingredient.active && "(inactivo)"}</Text>
-              <Text style={ops.muted}>{ingredient.type?.name ?? "Sin tipo"}{ingredient.sku ? ` · SKU ${ingredient.sku}` : ""}</Text>
-            </View>
-            <View>
-              <Text style={level === "danger" ? ops.statusDanger : level === "warning" ? ops.statusWarning : ops.statusGood}>
-                {quantityText(ingredient.current_stock)} {unit}
-              </Text>
-              <Text style={ops.muted}>mín. {quantityText(ingredient.minimum_stock)} · crítico {quantityText(ingredient.critical_stock)}</Text>
-            </View>
-          </View>
-          {!!ingredient.presentations?.length && <View style={ops.insetCard}>
-            <Text style={ops.label}>Presentaciones de compra</Text>
-            {ingredient.presentations.map((presentation) => <View style={ops.row} key={presentation.id}>
-              <Text style={!presentation.active ? ops.muted : undefined}>{presentation.name}{!presentation.active ? " (inactiva)" : ""}</Text>
-              <Text style={ops.muted}>1 × {presentation.name} = {quantityText(presentation.base_quantity)} {unit}</Text>
-              {isAdministrator && <View style={ops.chips}>
-                <Pressable style={ops.outlineButton} onPress={() => editPresentation(ingredient, presentation)}><Text style={ops.outlineText}>Editar</Text></Pressable>
-                {presentation.active && <Pressable style={ops.dangerButton} onPress={() => deactivatePresentation(ingredient, presentation)}><Text style={ops.dangerText}>Desactivar</Text></Pressable>}
-              </View>}
-            </View>)}
-          </View>}
-          {isAdministrator && <View style={ops.chips}>
-            <Pressable style={ops.outlineButton} onPress={() => editIngredient(ingredient)}><Text style={ops.outlineText}>Editar insumo</Text></Pressable>
-            <Pressable style={ops.outlineButton} onPress={() => { resetPresentationForm(ingredient.id); setTab("admin"); }}><Text style={ops.outlineText}>Nueva presentación</Text></Pressable>
-            {ingredient.active && <Pressable style={ops.dangerButton} onPress={() => deactivateIngredient(ingredient)}><Text style={ops.dangerText}>Desactivar</Text></Pressable>}
-          </View>}
-        </View>;
-      })}
+      {!summary.unavailable && <RemoteListStatus loading={summary.loading} error={summary.error} count={summary.data ? 1 : 0} emptyText="No hay resumen disponible." onRetry={summary.reload}/>}
+      {summary.data && <View style={ops.metrics}>
+        <View style={ops.metric}><ThemedText style={ops.statusGood}>{summary.data.available}</ThemedText><ThemedText style={ops.muted}>Disponibles</ThemedText></View>
+        <View style={ops.metric}><ThemedText style={summary.data.low ? ops.statusWarning : ops.metricValue}>{summary.data.low}</ThemedText><ThemedText style={ops.muted}>Bajos o críticos</ThemedText></View>
+        <View style={ops.metric}><ThemedText style={summary.data.out ? ops.statusDanger : ops.metricValue}>{summary.data.out}</ThemedText><ThemedText style={ops.muted}>Agotados</ThemedText></View>
+        <View style={ops.metric}><ThemedText style={summary.data.expiring ? ops.statusWarning : ops.metricValue}>{summary.data.expiring}</ThemedText><ThemedText style={ops.muted}>Por caducar</ThemedText></View>
+      </View>}
+      <Section title="¿Qué tengo?" subtitle="Busca un insumo y revisa su existencia utilizable, mínimo y próxima caducidad.">
+        <TextInput value={inventorySearch} onChangeText={setInventorySearch} placeholder="Buscar por nombre o SKU" />
+        <ThemedText style={ops.label}>Estado</ThemedText>
+        <View style={ops.chips}>{[
+          ["", "Todos"], ["available", "Disponibles"], ["low", "Existencia baja"], ["critical", "Críticos"], ["out", "Agotados"],
+        ].map(([key, label]) => <Pressable key={key || "all"} accessibilityRole="button" accessibilityState={{selected: inventoryStatus === key}} onPress={() => setInventoryStatus(key as typeof inventoryStatus)} style={[ops.chip, inventoryStatus === key && ops.chipActive]}><ThemedText>{label}</ThemedText></Pressable>)}</View>
+        {isAdministrator && <View style={ops.chips}>{[["1", "Activos"], ["0", "Inactivos"], ["", "Todos"]].map(([key, label]) => <Pressable key={key || "all-active"} accessibilityState={{selected: inventoryActive === key}} onPress={() => setInventoryActive(key as typeof inventoryActive)} style={[ops.chip, inventoryActive === key && ops.chipActive]}><ThemedText>{label}</ThemedText></Pressable>)}</View>}
+        <RemoteListStatus loading={inventory.loading} error={inventory.error} count={inventory.items.length} search={inventory.search} emptyText="No hay insumos registrados." onRetry={inventory.reload}/>
+        {inventory.items.map((ingredient) => {
+          const unit = ingredient.base_unit?.symbol ?? "u";
+          const labels = { available: "Disponible", low: "Existencia baja", critical: "Existencia crítica", out: "Agotado" };
+          const danger = ingredient.stock_status === "out" || ingredient.stock_status === "critical";
+          return <View style={[ops.card, !ingredient.active && ops.disabled]} key={ingredient.id}>
+            <View style={ops.row}><View style={ops.rowGrow}>
+              <ThemedText style={ops.strong}>{ingredient.name} {!ingredient.active && "(inactivo)"}</ThemedText>
+              <ThemedText style={ops.muted}>{ingredient.sku ? `SKU ${ingredient.sku} · ` : ""}{labels[ingredient.stock_status]}</ThemedText>
+              {numberValue(ingredient.minimum_stock) > 0 && numberValue(ingredient.missing_to_minimum) > 0
+                ? <ThemedText style={ops.muted}>Faltan {quantityText(ingredient.missing_to_minimum)} {unit} para alcanzar el mínimo configurado.</ThemedText>
+                : numberValue(ingredient.minimum_stock) === 0 ? <ThemedText style={ops.muted}>Sin objetivo mínimo configurado.</ThemedText> : null}
+            </View><View><ThemedText style={danger ? ops.statusDanger : ingredient.stock_status === "low" ? ops.statusWarning : ops.statusGood}>{quantityText(ingredient.current_stock)} {unit}</ThemedText><ThemedText style={ops.muted}>Mínimo {quantityText(ingredient.minimum_stock)} {unit}</ThemedText></View></View>
+            {!!ingredient.next_expiry && <ThemedText style={ops.muted}>Próxima caducidad: {dateText(ingredient.next_expiry)}</ThemedText>}
+            <Pressable onPress={() => setDetailId((current) => current === ingredient.id ? null : ingredient.id)} style={ops.outlineButton}><ThemedText style={ops.outlineText}>{detailId === ingredient.id ? "Ocultar detalle" : "Ver detalle"}</ThemedText></Pressable>
+            {detailId === ingredient.id && <View style={ops.insetCard}>
+              <RemoteListStatus loading={detail.loading} error={detail.error} count={detail.data ? 1 : 0} emptyText="No se encontró el detalle." onRetry={detail.reload}/>
+              {detail.data && <>
+                <ThemedText style={ops.label}>Presentaciones de compra</ThemedText>
+                {!detail.data.presentations?.length ? <ThemedText style={ops.muted}>No hay presentaciones configuradas.</ThemedText> : detail.data.presentations.map((presentation) => <ThemedText key={presentation.id}>{presentation.name} · {quantityText(presentation.quantity)} {presentation.equivalent_unit?.symbol ?? "u"} = {quantityText(presentation.base_quantity)} {unit}{!presentation.active ? " · Inactiva" : ""}</ThemedText>)}
+                <ThemedText style={ops.label}>Lotes recientes</ThemedText>
+                {!detail.data.batches?.length ? <ThemedText style={ops.muted}>No hay lotes.</ThemedText> : detail.data.batches.map((batch) => <ThemedText key={batch.id}>{batch.lot_code || `Lote #${batch.id}`} · {quantityText(batch.available_quantity)} {unit} · {batch.expires_at ? `caduca ${dateText(batch.expires_at)}` : "sin caducidad"}</ThemedText>)}
+                <ThemedText style={ops.label}>Cambios recientes</ThemedText>
+                {!detail.data.movements?.length ? <ThemedText style={ops.muted}>No hay movimientos.</ThemedText> : detail.data.movements.map((movement) => <ThemedText key={movement.id}>{numberValue(movement.quantity) > 0 ? "+" : ""}{quantityText(movement.quantity)} {unit} · {movement.type_label}{movement.origin_label ? ` · ${movement.origin_label}` : ""}</ThemedText>)}
+              </>}
+            </View>}
+          </View>;
+        })}
+        <Pagination data={inventory.data} loading={inventory.loading} onPage={inventory.setPage}/>
+      </Section>
     </>}
 
-    {tab === "batches" && <Section title="Lotes por caducidad (FEFO)" subtitle="Los lotes con vencimiento más próximo aparecen primero para facilitar su rotación.">
-      {!batches.length ? <EmptyState text="No hay lotes registrados." /> : batches.map((batch) => {
+    {tab === "batches" && <Section title="Lotes por fecha de caducidad" subtitle="Los que caducan antes aparecen primero para facilitar su uso oportuno.">
+      {!batches.length ? (ready("batches") ? <EmptyState text="No hay lotes registrados." /> : null) : batches.map((batch) => {
         const knownIngredient = ingredientById.get(batch.ingredient_id) ?? batch.ingredient;
         const expired = batchIsExpired(batch);
         return <View style={ops.insetCard} key={batch.id}>
           <View style={ops.row}>
             <View style={ops.rowGrow}>
-              <Text style={ops.strong}>{knownIngredient?.name ?? `Insumo #${batch.ingredient_id}`}</Text>
-              <Text style={ops.muted}>Lote {batch.lot_code || `#${batch.id}`} · recibido {dateText(batch.received_at)}</Text>
+              <ThemedText style={ops.strong}>{knownIngredient?.name ?? `Insumo #${batch.ingredient_id}`}</ThemedText>
+              <ThemedText style={ops.muted}>Lote {batch.lot_code || `#${batch.id}`} · recibido {dateText(batch.received_at)}</ThemedText>
             </View>
-            <Text style={expired ? ops.statusDanger : ops.value}>{quantityText(batch.available_quantity)} {knownIngredient?.base_unit?.symbol ?? "u"}</Text>
+            <ThemedText style={expired ? ops.statusDanger : ops.value}>{quantityText(batch.available_quantity)} {knownIngredient?.base_unit?.symbol ?? "u"}</ThemedText>
           </View>
-          <Text style={expired ? ops.statusDanger : ops.muted}>Caduca: {batch.expires_at ? dateText(batch.expires_at) : "sin caducidad"}{expired ? " · CADUCADO" : ""}</Text>
-          <Text style={ops.muted}>Inicial {quantityText(batch.initial_quantity)} · costo unitario ${moneyText(batch.unit_cost)}</Text>
-          {isAdministrator && <Pressable style={ops.outlineButton} onPress={() => { setAdjustmentBatchId(batch.id); setTab("admin"); }}><Text style={ops.outlineText}>Ajustar este lote</Text></Pressable>}
+          <ThemedText style={expired ? ops.statusDanger : ops.muted}>Caduca: {batch.expires_at ? dateText(batch.expires_at) : "sin caducidad"}{expired ? " · CADUCADO" : ""}</ThemedText>
+          <ThemedText style={ops.muted}>Inicial {quantityText(batch.initial_quantity)} · costo unitario ${moneyText(batch.unit_cost)}</ThemedText>
+          {isAdministrator && <Pressable style={ops.outlineButton} onPress={() => { setAdjustmentBatchId(batch.id); setTab("admin"); }}><ThemedText style={ops.outlineText}>Ajustar este lote</ThemedText></Pressable>}
         </View>;
       })}
-      {batchPage < batchLastPage && <Pressable disabled={loadingMoreBatches} onPress={loadMoreBatches} style={[ops.outlineButton, loadingMoreBatches && ops.disabled]}>
-        <Text style={ops.outlineText}>{loadingMoreBatches ? "Cargando lotes..." : `Cargar más lotes (página ${batchPage + 1} de ${batchLastPage})`}</Text>
+      {sources.batches.loaded && <ThemedText style={ops.muted}>{batches.length} de {batchTotal} lotes · páginas cargadas: {batchPage} de {batchLastPage}</ThemedText>}
+      {batchPage < batchLastPage && <Pressable disabled={loadingMoreBatches || sources.batches.loading} onPress={loadMoreBatches} style={[ops.outlineButton, loadingMoreBatches && ops.disabled]}>
+        <ThemedText style={ops.outlineText}>{loadingMoreBatches ? "Cargando lotes..." : `Cargar más lotes (página ${batchPage + 1} de ${batchLastPage})`}</ThemedText>
       </Pressable>}
     </Section>}
 
     {tab === "alerts" && <Section title="Alertas activas" subtitle="Prioriza faltantes, niveles críticos y lotes próximos a caducar.">
-      {!alerts.length ? <EmptyState text="No hay alertas activas de stock o caducidad." /> : alerts.map((alert) => <View style={ops.insetCard} key={alert.id}>
+      {!alerts.length ? (ready("alerts") ? <EmptyState text="No hay alertas activas de stock o caducidad." /> : null) : alerts.map((alert) => <View style={ops.insetCard} key={alert.id}>
         <View style={ops.row}>
-          <Text style={alert.severity === "critical" ? ops.statusDanger : ops.statusWarning}>{alert.severity.toUpperCase()} · {alert.type}</Text>
-          <Text style={ops.muted}>{dateText(alert.created_at, true)}</Text>
+          <ThemedText style={alert.severity === "critical" ? ops.statusDanger : ops.statusWarning}>{{low_stock:"EXISTENCIA BAJA",critical_stock:"AGOTADO O CRÍTICO",expiring:"PRÓXIMO A CADUCAR",expired:"CADUCADO",insufficient_dough:"INSUMO INSUFICIENTE"}[alert.type] ?? "REVISAR INVENTARIO"}</ThemedText>
+          <ThemedText style={ops.muted}>{dateText(alert.created_at, true)}</ThemedText>
         </View>
-        <Text>{alert.message}</Text>
-        <Text style={ops.muted}>{alert.ingredient?.name ?? "Insumo"}{alert.batch ? ` · lote ${alert.batch.lot_code || `#${alert.batch.id}`}` : ""}</Text>
+        <ThemedText>{alert.message}</ThemedText>
+        <ThemedText style={ops.muted}>{alert.ingredient?.name ?? "Insumo"}{alert.batch ? ` · lote ${alert.batch.lot_code || `#${alert.batch.id}`}` : ""}</ThemedText>
       </View>)}
     </Section>}
 
     {tab === "movements" && <Section title="Historial de movimientos" subtitle="Consulta entradas, salidas y ajustes con su saldo antes y después.">
-      {!movements.length ? <EmptyState text="No hay movimientos de inventario." /> : movements.map((movement) => <View style={ops.insetCard} key={movement.id}>
+      {!movements.length ? (ready("movements") ? <EmptyState text="No hay movimientos de inventario." /> : null) : movements.map((movement) => <View style={ops.insetCard} key={movement.id}>
         <View style={ops.row}>
           <View style={ops.rowGrow}>
-            <Text style={ops.strong}>{ingredientById.get(movement.ingredient_id)?.name ?? movement.ingredient?.name ?? `Insumo #${movement.ingredient_id}`}</Text>
-            <Text style={ops.muted}>{movement.type} · {movement.reason || "sin motivo"} · {dateText(movement.created_at, true)}</Text>
+            <ThemedText style={ops.strong}>{ingredientById.get(movement.ingredient_id)?.name ?? movement.ingredient?.name ?? `Insumo #${movement.ingredient_id}`}</ThemedText>
+            <ThemedText style={ops.muted}>{movement.type_label ?? "Movimiento de inventario"}{movement.origin_label ? ` · ${movement.origin_label}` : ""} · {dateText(movement.created_at, true)}</ThemedText>
           </View>
-          <Text style={numberValue(movement.quantity) < 0 ? ops.statusDanger : ops.statusGood}>{numberValue(movement.quantity) > 0 ? "+" : ""}{quantityText(movement.quantity)} {ingredientById.get(movement.ingredient_id)?.base_unit?.symbol ?? "u"}</Text>
+          <ThemedText style={numberValue(movement.quantity) < 0 ? ops.statusDanger : ops.statusGood}>{numberValue(movement.quantity) > 0 ? "+" : ""}{quantityText(movement.quantity)} {ingredientById.get(movement.ingredient_id)?.base_unit?.symbol ?? "u"}</ThemedText>
         </View>
-        <Text style={ops.muted}>Lote {movement.batch?.lot_code || `#${movement.inventory_batch_id}`} · {quantityText(movement.quantity_before)} → {quantityText(movement.quantity_after)}</Text>
-        {!!movement.comment && <Text>{movement.comment}</Text>}
+        <ThemedText style={ops.muted}>Lote {movement.batch?.lot_code || `#${movement.inventory_batch_id}`} · {quantityText(movement.quantity_before)} → {quantityText(movement.quantity_after)}</ThemedText>
+        {!!movement.reason && <ThemedText style={ops.muted}>Motivo: {movement.reason.replaceAll("_", " ")}</ThemedText>}
+        {!!movement.comment && <ThemedText>{movement.comment}</ThemedText>}
       </View>)}
-      {movementPage < movementLastPage && <Pressable disabled={loadingMoreMovements} onPress={loadMoreMovements} style={[ops.outlineButton, loadingMoreMovements && ops.disabled]}>
-        <Text style={ops.outlineText}>{loadingMoreMovements ? "Cargando movimientos..." : `Cargar más movimientos (página ${movementPage + 1} de ${movementLastPage})`}</Text>
+      {sources.movements.loaded && <ThemedText style={ops.muted}>{movements.length} de {movementTotal} movimientos · páginas cargadas: {movementPage} de {movementLastPage}</ThemedText>}
+      {movementPage < movementLastPage && <Pressable disabled={loadingMoreMovements || sources.movements.loading} onPress={loadMoreMovements} style={[ops.outlineButton, loadingMoreMovements && ops.disabled]}>
+        <ThemedText style={ops.outlineText}>{loadingMoreMovements ? "Cargando movimientos..." : `Cargar más movimientos (página ${movementPage + 1} de ${movementLastPage})`}</ThemedText>
       </Pressable>}
     </Section>}
 
     {tab === "admin" && isAdministrator && <>
       <Section title={editingIngredientId ? "Editar insumo" : "Registrar insumo"} subtitle="Configura su unidad de control, niveles de alerta y, si aplica, la existencia inicial.">
-        <Text style={ops.subtitle}>Identificación</Text>
+        <ThemedText style={ops.subtitle}>Identificación</ThemedText>
         <View style={[ops.inline, compact && ops.inlineCompact]}>
           <TextInput style={[ops.input, ops.fieldGrow]} value={ingredientName} onChangeText={setIngredientName} placeholder="Nombre del insumo" />
           <TextInput style={[ops.input, ops.fieldGrow]} value={ingredientSku} onChangeText={setIngredientSku} placeholder="SKU opcional" autoCapitalize="characters" />
         </View>
-        {!editingIngredientId && <><Text style={ops.label}>Unidad base</Text><View style={ops.chips}>{activeUnits.map((unit) => <Pressable key={unit.id} onPress={() => setBaseUnitId(unit.id)} style={[ops.chip, baseUnitId === unit.id && ops.chipActive]}><Text>{unit.symbol} · {unit.name}</Text></Pressable>)}</View></>}
-        {editingIngredientId && <Text style={ops.notice}>La unidad base se conserva para no alterar movimientos, recetas ni conversiones existentes.</Text>}
-        <Text style={ops.label}>Tipo de insumo</Text>
-        <View style={ops.chips}><Pressable onPress={() => setIngredientTypeId(null)} style={[ops.chip, ingredientTypeId === null && ops.chipActive]}><Text>Sin tipo</Text></Pressable>{activeTypes.map((type) => <Pressable key={type.id} onPress={() => setIngredientTypeId(type.id)} style={[ops.chip, ingredientTypeId === type.id && ops.chipActive]}><Text>{type.name}</Text></Pressable>)}</View>
-        <Text style={ops.subtitle}>Control de existencias</Text>
+        {!editingIngredientId && <><ThemedText style={ops.label}>Unidad base</ThemedText><View style={ops.chips}>{activeUnits.map((unit) => <Pressable key={unit.id} onPress={() => setBaseUnitId(unit.id)} style={[ops.chip, baseUnitId === unit.id && ops.chipActive]}><ThemedText>{unit.symbol} · {unit.name}</ThemedText></Pressable>)}</View></>}
+        {editingIngredientId && <ThemedText style={ops.notice}>La unidad base se conserva para no alterar movimientos, recetas ni conversiones existentes.</ThemedText>}
+        <ThemedText style={ops.label}>Tipo de insumo</ThemedText>
+        <View style={ops.chips}><Pressable onPress={() => setIngredientTypeId(null)} style={[ops.chip, ingredientTypeId === null && ops.chipActive]}><ThemedText>Sin tipo</ThemedText></Pressable>{activeTypes.map((type) => <Pressable key={type.id} onPress={() => setIngredientTypeId(type.id)} style={[ops.chip, ingredientTypeId === type.id && ops.chipActive]}><ThemedText>{type.name}</ThemedText></Pressable>)}</View>
+        <ThemedText style={ops.subtitle}>Control de existencias</ThemedText>
         <View style={[ops.inline, compact && ops.inlineCompact]}>
           <TextInput style={[ops.input, ops.fieldGrow]} value={minimumStock} onChangeText={setMinimumStock} placeholder="Stock mínimo" keyboardType="decimal-pad" />
           <TextInput style={[ops.input, ops.fieldGrow]} value={criticalStock} onChangeText={setCriticalStock} placeholder="Stock crítico" keyboardType="decimal-pad" />
           <TextInput style={[ops.input, ops.fieldGrow]} value={expiryAlertDays} onChangeText={setExpiryAlertDays} placeholder="Alerta (días)" keyboardType="number-pad" />
           <TextInput style={[ops.input, ops.fieldGrow]} value={shelfLifeDays} onChangeText={setShelfLifeDays} placeholder="Vida útil (días)" keyboardType="number-pad" />
         </View>
-        {editingIngredientId && <View style={ops.chips}><Pressable onPress={() => setIngredientActive((value) => !value)} style={[ops.chip, ingredientActive && ops.chipActive]}><Text>{ingredientActive ? "Activo" : "Inactivo"}</Text></Pressable></View>}
+        {editingIngredientId && <View style={ops.chips}><Pressable onPress={() => setIngredientActive((value) => !value)} style={[ops.chip, ingredientActive && ops.chipActive]}><ThemedText>{ingredientActive ? "Activo" : "Inactivo"}</ThemedText></Pressable></View>}
         {!editingIngredientId && <>
-          <Text style={ops.subtitle}>Existencia inicial opcional</Text>
-          <Text style={ops.muted}>Puedes dejarla vacía y registrar la primera compra posteriormente.</Text>
+          <ThemedText style={ops.subtitle}>Existencia inicial opcional</ThemedText>
+          <ThemedText style={ops.muted}>Puedes dejarla vacía y registrar la primera compra posteriormente.</ThemedText>
           <View style={[ops.inline, compact && ops.inlineCompact]}>
             <TextInput style={[ops.input, ops.fieldGrow]} value={initialStock} onChangeText={setInitialStock} placeholder="Cantidad" keyboardType="decimal-pad" />
             <TextInput style={[ops.input, ops.fieldGrow]} value={initialUnitCost} onChangeText={setInitialUnitCost} placeholder="Costo por unidad base" keyboardType="decimal-pad" />
@@ -581,44 +643,46 @@ export function InventoryScreen({ token, isAdministrator }: { token: string; isA
           </View>
         </>}
         <View style={ops.chips}>
-          <Pressable disabled={saving} onPress={saveIngredient} style={[ops.button, saving && ops.disabled]}><Text style={ops.buttonText}>{saving ? "Guardando..." : editingIngredientId ? "Actualizar insumo" : "Registrar insumo"}</Text></Pressable>
-          {editingIngredientId && <Pressable onPress={resetIngredientForm} style={ops.outlineButton}><Text style={ops.outlineText}>Cancelar edición</Text></Pressable>}
+          <Pressable disabled={saving || !ready("units") || !ready("types")} onPress={saveIngredient} style={[ops.button, saving && ops.disabled]}><ThemedText style={ops.buttonText}>{saving ? "Guardando..." : editingIngredientId ? "Actualizar insumo" : "Registrar insumo"}</ThemedText></Pressable>
+          {editingIngredientId && <Pressable onPress={resetIngredientForm} style={ops.outlineButton}><ThemedText style={ops.outlineText}>Cancelar edición</ThemedText></Pressable>}
         </View>
       </Section>
 
       <Section title={editingPresentationId ? "Editar presentación de compra" : "Nueva presentación de compra"} subtitle="Relaciona la forma en que compras el insumo con su unidad base de inventario.">
-        <Text style={ops.label}>Insumo</Text>
-        <View style={ops.chips}>{activeIngredients.map((ingredient) => <Pressable disabled={editingPresentationId !== null} key={ingredient.id} onPress={() => setPresentationIngredientId(ingredient.id)} style={[ops.chip, presentationIngredientId === ingredient.id && ops.chipActive, editingPresentationId !== null && ops.chipDisabled]}><Text>{ingredient.name}</Text></Pressable>)}</View>
+        <ThemedText style={ops.label}>Insumo</ThemedText>
+        <View style={ops.chips}>{activeIngredients.map((ingredient) => <Pressable disabled={editingPresentationId !== null} key={ingredient.id} onPress={() => setPresentationIngredientId(ingredient.id)} style={[ops.chip, presentationIngredientId === ingredient.id && ops.chipActive, editingPresentationId !== null && ops.chipDisabled]}><ThemedText>{ingredient.name}</ThemedText></Pressable>)}</View>
         <View style={[ops.inline, compact && ops.inlineCompact]}>
           <TextInput style={[ops.input, ops.fieldGrow]} value={presentationName} onChangeText={setPresentationName} placeholder="Nombre, por ejemplo Bolsa 2 kg" />
           <TextInput style={[ops.input, ops.fieldGrow]} value={presentationSku} onChangeText={setPresentationSku} placeholder="SKU del proveedor" autoCapitalize="characters" />
         </View>
         <View style={[ops.inline, compact && ops.inlineCompact]}>
           <TextInput style={[ops.input, ops.fieldGrow]} value={presentationQuantity} onChangeText={setPresentationQuantity} placeholder="Cantidad equivalente" keyboardType="decimal-pad" />
-          <View style={ops.fieldGrow}><Text style={ops.label}>Unidad equivalente</Text><View style={ops.chips}>{compatiblePresentationUnits.map((unit) => <Pressable key={unit.id} onPress={() => setPresentationUnitId(unit.id)} style={[ops.chip, presentationUnitId === unit.id && ops.chipActive]}><Text>{unit.symbol}</Text></Pressable>)}</View></View>
+          <View style={ops.fieldGrow}><ThemedText style={ops.label}>Unidad equivalente</ThemedText><View style={ops.chips}>{compatiblePresentationUnits.map((unit) => <Pressable key={unit.id} onPress={() => setPresentationUnitId(unit.id)} style={[ops.chip, presentationUnitId === unit.id && ops.chipActive]}><ThemedText>{unit.symbol}</ThemedText></Pressable>)}</View></View>
         </View>
-        {selectedPresentationIngredient && selectedPresentationUnit && <Text style={ops.notice}>Conversión: 1 presentación = {quantityText(presentationConversion)} {selectedPresentationBaseUnit?.symbol}. Esta equivalencia se usará al registrar compras e inventario.</Text>}
-        {editingPresentationId && <Pressable onPress={() => setPresentationActive((value) => !value)} style={[ops.chip, presentationActive && ops.chipActive]}><Text>{presentationActive ? "Presentación activa" : "Presentación inactiva"}</Text></Pressable>}
+        {selectedPresentationIngredient && selectedPresentationUnit && <ThemedText style={ops.notice}>Conversión: 1 presentación = {quantityText(presentationConversion)} {selectedPresentationBaseUnit?.symbol}. Esta equivalencia se usará al registrar compras e inventario.</ThemedText>}
+        {editingPresentationId && <Pressable onPress={() => setPresentationActive((value) => !value)} style={[ops.chip, presentationActive && ops.chipActive]}><ThemedText>{presentationActive ? "Presentación activa" : "Presentación inactiva"}</ThemedText></Pressable>}
         <View style={ops.chips}>
-          <Pressable disabled={saving} onPress={savePresentation} style={[ops.button, saving && ops.disabled]}><Text style={ops.buttonText}>{editingPresentationId ? "Actualizar presentación" : "Guardar presentación"}</Text></Pressable>
-          {editingPresentationId && <Pressable onPress={() => resetPresentationForm(selectedPresentationIngredient?.id)} style={ops.outlineButton}><Text style={ops.outlineText}>Cancelar edición</Text></Pressable>}
+          <Pressable disabled={saving || !ready("ingredients") || !ready("units")} onPress={savePresentation} style={[ops.button, saving && ops.disabled]}><ThemedText style={ops.buttonText}>{editingPresentationId ? "Actualizar presentación" : "Guardar presentación"}</ThemedText></Pressable>
+          {editingPresentationId && <Pressable onPress={() => resetPresentationForm(selectedPresentationIngredient?.id)} style={ops.outlineButton}><ThemedText style={ops.outlineText}>Cancelar edición</ThemedText></Pressable>}
         </View>
       </Section>
 
       <Section title="Ajuste de inventario por lote" subtitle="Usa esta opción para mermas, correcciones y movimientos que no provienen de una compra o venta.">
-        <Text style={ops.label}>Lote</Text>
-        <View style={ops.chips}>{batches.map((batch) => <Pressable key={batch.id} onPress={() => setAdjustmentBatchId(batch.id)} style={[ops.chip, adjustmentBatchId === batch.id && ops.chipActive]}><Text>{batch.ingredient?.name ?? "Insumo"} · {batch.lot_code || `#${batch.id}`} ({quantityText(batch.available_quantity)}){batchIsExpired(batch) ? " · CADUCADO" : ""}</Text></Pressable>)}</View>
-        <Text style={ops.label}>Motivo</Text>
-        <View style={ops.chips}>{adjustmentReasons.map((reason) => <Pressable key={reason.key} onPress={() => setAdjustmentReason(reason.key)} style={[ops.chip, adjustmentReason === reason.key && ops.chipActive]}><Text>{reason.label}</Text></Pressable>)}</View>
-        {!selectedAdjustmentReason.removal && <View style={ops.chips}><Pressable onPress={() => setAdjustmentDirection("in")} style={[ops.chip, adjustmentDirection === "in" && ops.chipActive]}><Text>Entrada (+)</Text></Pressable><Pressable onPress={() => setAdjustmentDirection("out")} style={[ops.chip, adjustmentDirection === "out" && ops.chipActive]}><Text>Salida (-)</Text></Pressable></View>}
-        {selectedAdjustmentReason.removal && <Text style={ops.notice}>Este motivo siempre registra una salida negativa del lote.</Text>}
+        <ThemedText style={ops.label}>Lote</ThemedText>
+        <ThemedText style={ops.muted}>{batches.length} de {batchTotal} lotes cargados.</ThemedText>
+        {batchPage < batchLastPage && <Pressable disabled={loadingMoreBatches || sources.batches.loading} onPress={loadMoreBatches} style={ops.outlineButton}><ThemedText style={ops.outlineText}>{loadingMoreBatches ? "Cargando..." : "Cargar más lotes"}</ThemedText></Pressable>}
+        <View style={ops.chips}>{batches.map((batch) => <Pressable key={batch.id} onPress={() => setAdjustmentBatchId(batch.id)} style={[ops.chip, adjustmentBatchId === batch.id && ops.chipActive]}><ThemedText>{batch.ingredient?.name ?? "Insumo"} · {batch.lot_code || `#${batch.id}`} ({quantityText(batch.available_quantity)}){batchIsExpired(batch) ? " · CADUCADO" : ""}</ThemedText></Pressable>)}</View>
+        <ThemedText style={ops.label}>Motivo</ThemedText>
+        <View style={ops.chips}>{adjustmentReasons.map((reason) => <Pressable key={reason.key} onPress={() => setAdjustmentReason(reason.key)} style={[ops.chip, adjustmentReason === reason.key && ops.chipActive]}><ThemedText>{reason.label}</ThemedText></Pressable>)}</View>
+        {!selectedAdjustmentReason.removal && <View style={ops.chips}><Pressable onPress={() => setAdjustmentDirection("in")} style={[ops.chip, adjustmentDirection === "in" && ops.chipActive]}><ThemedText>Entrada (+)</ThemedText></Pressable><Pressable onPress={() => setAdjustmentDirection("out")} style={[ops.chip, adjustmentDirection === "out" && ops.chipActive]}><ThemedText>Salida (-)</ThemedText></Pressable></View>}
+        {selectedAdjustmentReason.removal && <ThemedText style={ops.notice}>Este motivo siempre registra una salida negativa del lote.</ThemedText>}
         <View style={[ops.inline, compact && ops.inlineCompact]}>
           <TextInput style={[ops.input, ops.fieldGrow]} value={adjustmentQuantity} onChangeText={setAdjustmentQuantity} placeholder="Cantidad absoluta" keyboardType="decimal-pad" />
           <TextInput style={[ops.input, ops.fieldGrow, ops.textArea]} value={adjustmentComment} onChangeText={setAdjustmentComment} placeholder="Explicación obligatoria" multiline />
         </View>
-        {selectedAdjustmentBatch && <Text style={ops.muted}>Disponible antes del ajuste: {quantityText(selectedAdjustmentBatch.available_quantity)} {ingredientById.get(selectedAdjustmentBatch.ingredient_id)?.base_unit?.symbol ?? "u"}</Text>}
-        {selectedAdjustmentBatch && batchIsExpired(selectedAdjustmentBatch) && <Text style={ops.statusDanger}>Este lote está caducado: solo se permiten salidas para corregir o retirar su existencia.</Text>}
-        <Pressable disabled={saving || !batches.length} onPress={saveAdjustment} style={[ops.button, (saving || !batches.length) && ops.disabled]}>{saving ? <ActivityIndicator color="white" /> : <Text style={ops.buttonText}>Registrar ajuste</Text>}</Pressable>
+        {selectedAdjustmentBatch && <ThemedText style={ops.muted}>Disponible antes del ajuste: {quantityText(selectedAdjustmentBatch.available_quantity)} {ingredientById.get(selectedAdjustmentBatch.ingredient_id)?.base_unit?.symbol ?? "u"}</ThemedText>}
+        {selectedAdjustmentBatch && batchIsExpired(selectedAdjustmentBatch) && <ThemedText style={ops.statusDanger}>Este lote está caducado: solo se permiten salidas para corregir o retirar su existencia.</ThemedText>}
+        <Pressable disabled={saving || !batches.length || !ready("batches")} onPress={saveAdjustment} style={[ops.button, (saving || !batches.length) && ops.disabled]}>{saving ? <ActivityIndicator color={theme.colors.primaryText} /> : <ThemedText style={ops.buttonText}>Registrar ajuste</ThemedText>}</Pressable>
       </Section>
     </>}
   </View>;

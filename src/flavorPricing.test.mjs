@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { flavorSelectionExtra } from "./flavorPricing.ts";
+import { loadUi } from "./testSupport/loadUi.mjs";
+const { flavorSelectionExtra } = await import(await loadUi("flavorPricing.ts"));
 
 const settings = { half_and_half_extra: 30, additional_wing_flavor_extra: 15 };
 

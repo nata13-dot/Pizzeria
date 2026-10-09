@@ -32,7 +32,9 @@
   "devDependencies": {
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.5.0",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "~19.2.2",
+    "jsdom": "^30.1.1",
     "serve": "^14.2.6",
     "typescript": "~6.0.3"
   },
@@ -43,12 +45,15 @@
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
     "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --experimental-strip-types --test src/*.test.mjs",
-    "build:web": "expo export --platform web",
+    "build:web": "expo export --platform web && node scripts/generate-service-worker.mjs",
     "start:production": "serve -s dist -l tcp://0.0.0.0:$PORT",
     "cap:sync": "npm run build:web && cap sync android && npm run cap:sounds",
     "cap:sounds": "node scripts/sync-android-sounds.mjs",
     "cap:assets": "capacitor-assets generate --android --assetPath capacitor-assets --iconBackgroundColor '#050505' --iconBackgroundColorDark '#050505'",
     "cap:apk": "npm run cap:sync && npm run cap:assets && cd android && ./gradlew assembleDebug"
+  },
+  "overrides": {
+    "compression": "1.8.2"
   },
   "private": true
 }
