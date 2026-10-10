@@ -3,7 +3,6 @@ import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
 import { Component, type ErrorInfo, type ReactNode, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Image, Platform, Pressable, SafeAreaView, ScrollView, Text, useWindowDimensions, View } from "react-native";
-import { FloatingTextInput as TextInput } from "../components/FloatingTextInput";
 import { API_URL, api, clearApiCache, setUnauthorizedHandler } from "../api";
 import { clearSession, readSession, saveSession } from "../session";
 import { registerPush, showOrderNotification } from "../push";
@@ -19,11 +18,7 @@ import { ScreenContent } from "../navigation/ScreenContent";
 import { requestModuleNavigation, takeBackTarget } from "../navigation/controller";
 import { useAppStyles } from "../styles/appStyles";
 import { PressMotion, ScreenMotion } from "../motion/Motion";
-type Session = {
-  token: string;
-  expires_at?: string;
-  user: { id: number; name: string; branch_id: number; permissions: string[]; role: { name: string; slug: string } };
-};
+import {Login,type LoginSession as Session} from "./Login";
 const labels=Object.fromEntries(appModules.map(module=>[module.id,module.label])) as Record<Screen,string>;
 const brandLogo=require("../../assets/brand-mark.png");
 function hasPermission(user: Session["user"], permission: string): boolean {
@@ -213,108 +208,3 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { error
   }
 }
 function AppErrorFallback({onRetry}:{onRetry:()=>void}){const s=useAppStyles();return <SafeAreaView style={s.loginPage}><View style={s.card}><ThemedText style={s.title}>Algo salió mal</ThemedText><ThemedText style={s.error}>No pudimos mostrar esta pantalla. Intenta de nuevo; si continúa, vuelve a iniciar sesión.</ThemedText><Pressable style={s.primary} onPress={onRetry}><ThemedText style={s.primaryText}>Intentar de nuevo</ThemedText></Pressable></View></SafeAreaView>;}
-function Login({ onLogin }: { onLogin: (s: Session, remember: boolean) => void }) {
-  const s=useAppStyles();
-  const {theme}=useTheme();
-  const { width } = useWindowDimensions();
-  const compact = width < 780;
-  const [email, setEmail] = useState(""),
-    [password, setPassword] = useState(""),
-    [remember, setRemember] = useState(true),
-    [error, setError] = useState(""),
-    [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (Platform.OS !== "web" || typeof document === "undefined") return;
-    let form = document.getElementById("pizzeria-login-form") as HTMLFormElement | null;
-    if (!form) {
-      form = document.createElement("form");
-      form.id = "pizzeria-login-form";
-      form.autocomplete = "on";
-      form.style.display = "none";
-      form.addEventListener("submit", (event) => event.preventDefault());
-      document.body.appendChild(form);
-    }
-    const username = document.getElementById("login-username") as HTMLInputElement | null;
-    const passwordField = document.getElementById("login-password") as HTMLInputElement | null;
-    if (username) { username.name = "username"; username.autocomplete = "username"; username.setAttribute("form", form.id); }
-    if (passwordField) { passwordField.name = "password"; passwordField.autocomplete = "current-password"; passwordField.setAttribute("form", form.id); }
-    return () => form?.remove();
-  }, []);
-  async function go() {
-    setBusy(true);
-    setError("");
-    try {
-      const authenticated = await api<Session>("/login", undefined, {
-          method: "POST",
-          body: JSON.stringify({ login: email, password, device_name: Platform.OS }),
-        });
-      if (Platform.OS === "web" && typeof document !== "undefined") {
-        document.getElementById("pizzeria-login-form")?.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-      }
-      onLogin(authenticated, remember);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-  return (
-    <SafeAreaView style={[s.loginPage, compact && s.loginPageCompact]}>
-      <View style={[s.hero, compact && s.heroCompact]}>
-        <ThemedText style={s.pizza}>🍕</ThemedText>
-        <ThemedText style={[s.heroTitle, compact && s.heroTitleCompact]}>Tu pizzería,{`\n`}bajo control.</ThemedText>
-        <ThemedText style={s.muted}>
-          Ventas, cocina, reparto e inventario conectados.
-        </ThemedText>
-      </View>
-      <View style={[s.card, compact && s.cardCompact]}>
-        <ThemedText style={s.eyebrow}>BIENVENIDO</ThemedText>
-        <ThemedText style={s.title}>Inicia sesión</ThemedText>
-        <ThemedText style={s.label}>Correo o usuario</ThemedText>
-        <TextInput
-          nativeID="login-username"
-          accessibilityLabel="Correo o usuario"
-          placeholder="Correo o usuario"
-          style={s.input}
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          autoComplete="username"
-          textContentType="username"
-          importantForAutofill="yes"
-          returnKeyType="next"
-        />
-        <ThemedText style={s.label}>Contraseña</ThemedText>
-        <TextInput
-          nativeID="login-password"
-          accessibilityLabel="Contraseña"
-          placeholder="Contraseña"
-          style={s.input}
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoComplete="current-password"
-          textContentType="password"
-          importantForAutofill="yes"
-          returnKeyType="done"
-          onSubmitEditing={go}
-        />
-        <Pressable onPress={() => setRemember((value) => !value)} style={[s.type, remember && s.typeActive]}>
-          <ThemedText>{remember ? "✓ Recordar sesión" : "Recordar sesión"}</ThemedText>
-        </Pressable>
-        {!!error && <ThemedText style={s.error}>{error}</ThemedText>}
-        <Pressable
-          disabled={busy || !email.trim() || !password}
-          style={[s.primary, (busy || !email.trim() || !password) && s.disabled]}
-          onPress={go}
-        >
-          {busy ? (
-            <ActivityIndicator color={theme.colors.primaryText} />
-          ) : (
-            <ThemedText style={s.primaryText}>Entrar</ThemedText>
-          )}
-        </Pressable>
-      </View>
-    </SafeAreaView>
-  );
-}

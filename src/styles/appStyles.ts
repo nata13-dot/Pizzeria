@@ -67,8 +67,10 @@ export const createAppStyles=(theme:Theme)=>StyleSheet.create({
     bottomIconActiveText: { color: theme.colors.primaryText },
     bottomLabel: { color: theme.colors.textMuted, fontSize: 10 * theme.fontScale, fontWeight: "700", letterSpacing: .1, maxWidth: "100%", textAlign: "center" },
     bottomTextActive: { color: theme.colors.primary, fontWeight: "900" },
+    loginSafeArea: { backgroundColor: theme.colors.background, flex: 1 },
+    loginKeyboard: { flex: 1 },
     loginPage: {
-        flex: 1,
+        flexGrow: 1,
         flexDirection: Platform.OS === "web" ? "row" : "column",
         alignItems: "center",
         justifyContent: "center",
