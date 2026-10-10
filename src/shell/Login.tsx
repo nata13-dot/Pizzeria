@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from "react";
-import {ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, TextInput as NativeTextInput, useWindowDimensions, View} from "react-native";
+import {ActivityIndicator, Image, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, TextInput as NativeTextInput, useWindowDimensions, View} from "react-native";
 import {api} from "../api";
 import {FloatingTextInput as TextInput} from "../components/FloatingTextInput";
 import {useAppStyles} from "../styles/appStyles";
@@ -12,6 +12,8 @@ export type LoginSession = {
   user: { id: number; name: string; branch_id: number; permissions: string[]; role: { name: string; slug: string } };
 };
 
+const brandLogo=require("../../assets/brand-mark.png");
+
 export function Login({onLogin}:{onLogin:(session:LoginSession,remember:boolean)=>void}) {
   const s=useAppStyles();
   const {theme}=useTheme();
@@ -20,6 +22,7 @@ export function Login({onLogin}:{onLogin:(session:LoginSession,remember:boolean)
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
   const [remember,setRemember]=useState(true);
+  const [showPassword,setShowPassword]=useState(false);
   const [error,setError]=useState("");
   const [busy,setBusy]=useState(false);
   const passwordInput=useRef<NativeTextInput>(null);
@@ -48,14 +51,26 @@ export function Login({onLogin}:{onLogin:(session:LoginSession,remember:boolean)
   return <SafeAreaView style={s.loginSafeArea}>
     <KeyboardAvoidingView style={s.loginKeyboard} behavior={Platform.OS==="ios"?"padding":Platform.OS==="android"?"height":undefined}>
       <ScrollView automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" contentContainerStyle={[s.loginPage,compact&&s.loginPageCompact]}>
-        <View style={[s.hero,compact&&s.heroCompact]}><ThemedText style={s.pizza}>🍕</ThemedText><ThemedText style={[s.heroTitle,compact&&s.heroTitleCompact]}>Tu pizzería,{`\n`}bajo control.</ThemedText><ThemedText style={s.muted}>Ventas, cocina, reparto e inventario conectados.</ThemedText></View>
-        <View style={[s.card,compact&&s.cardCompact]}>
-          <ThemedText style={s.eyebrow}>BIENVENIDO</ThemedText><ThemedText style={s.title}>Inicia sesión</ThemedText>
-          <ThemedText style={s.label}>Correo o usuario</ThemedText><TextInput nativeID="login-username" accessibilityLabel="Correo o usuario" placeholder="Correo o usuario" style={s.input} value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" importantForAutofill="yes" returnKeyType="next" blurOnSubmit={false} onSubmitEditing={()=>passwordInput.current?.focus()}/>
-          <ThemedText style={s.label}>Contraseña</ThemedText><TextInput nativeID="login-password" inputRef={passwordInput} accessibilityLabel="Contraseña" placeholder="Contraseña" style={s.input} value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" importantForAutofill="yes" returnKeyType="done" onSubmitEditing={()=>void go()}/>
-          <Pressable accessibilityRole="checkbox" accessibilityState={{checked:remember}} onPress={()=>setRemember(value=>!value)} style={[s.type,remember&&s.typeActive]}><ThemedText>{remember?"✓ Recordar sesión":"Recordar sesión"}</ThemedText></Pressable>
-          {!!error&&<ThemedText accessibilityRole="alert" style={s.error}>{error}</ThemedText>}
-          <Pressable accessibilityRole="button" disabled={busy||!email.trim()||!password} style={[s.primary,(busy||!email.trim()||!password)&&s.disabled]} onPress={()=>void go()}>{busy?<ActivityIndicator color={theme.colors.primaryText}/>:<ThemedText style={s.primaryText}>Entrar</ThemedText>}</Pressable>
+        <View style={[s.loginShell,compact&&s.loginShellCompact]}>
+          <View style={[s.loginHero,compact&&s.loginHeroCompact]}>
+            <View style={s.loginBrandRow}><View style={s.loginLogoFrame}><Image accessibilityLabel="El Espinazo del Diablo" resizeMode="contain" source={brandLogo} style={s.loginLogo}/></View><View><ThemedText style={s.loginBrandName}>El Espinazo</ThemedText><ThemedText style={s.loginBrandCaption}>Pizzas y Alitas</ThemedText></View></View>
+            {!compact&&<View style={s.loginHeroCopy}><ThemedText style={s.loginHeroEyebrow}>GESTIÓN INTEGRAL</ThemedText><ThemedText style={s.heroTitle}>Todo tu negocio,{`\n`}en un solo lugar.</ThemedText><ThemedText style={s.loginHeroText}>Ventas, cocina, reparto e inventario conectados para trabajar con rapidez.</ThemedText></View>}
+            {!compact&&<View style={s.loginBenefits}><View style={s.loginBenefit}><ThemedText style={s.loginBenefitIcon}>✓</ThemedText><ThemedText style={s.loginBenefitText}>Información sincronizada</ThemedText></View><View style={s.loginBenefit}><ThemedText style={s.loginBenefitIcon}>✓</ThemedText><ThemedText style={s.loginBenefitText}>Acceso seguro para tu equipo</ThemedText></View></View>}
+          </View>
+          <View style={[s.loginForm,compact&&s.loginFormCompact]}>
+            <View style={s.loginHeading}><ThemedText style={s.eyebrow}>BIENVENIDO</ThemedText><ThemedText style={s.loginTitle}>Inicia sesión</ThemedText><ThemedText style={s.loginSubtitle}>Ingresa tus datos para continuar.</ThemedText></View>
+            <View style={s.loginFields}>
+              <TextInput nativeID="login-username" accessibilityLabel="Correo o usuario" placeholder="Correo o usuario" style={s.loginInput} value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" importantForAutofill="yes" returnKeyType="next" blurOnSubmit={false} onSubmitEditing={()=>passwordInput.current?.focus()}/>
+              <TextInput nativeID="login-password" inputRef={passwordInput} accessibilityLabel="Contraseña" placeholder="Contraseña" style={s.loginInput} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" importantForAutofill="yes" returnKeyType="done" onSubmitEditing={()=>void go()}/>
+            </View>
+            <View style={s.loginOptions}>
+              <Pressable accessibilityRole="checkbox" accessibilityState={{checked:remember}} onPress={()=>setRemember(value=>!value)} style={s.loginRemember}><View style={[s.loginCheckbox,remember&&s.loginCheckboxActive]}>{remember&&<ThemedText style={s.loginCheck}>✓</ThemedText>}</View><ThemedText style={s.loginOptionText}>Recordar sesión</ThemedText></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={showPassword?"Ocultar contraseña":"Mostrar contraseña"} onPress={()=>setShowPassword(value=>!value)} style={s.loginPasswordToggle}><ThemedText style={s.loginPasswordToggleText}>{showPassword?"Ocultar":"Mostrar"}</ThemedText></Pressable>
+            </View>
+            {!!error&&<View style={s.loginError}><ThemedText accessibilityRole="alert" style={s.loginErrorText}>{error}</ThemedText></View>}
+            <Pressable accessibilityRole="button" disabled={busy||!email.trim()||!password} style={({pressed})=>[s.loginPrimary,pressed&&s.loginPrimaryPressed,(busy||!email.trim()||!password)&&s.disabled]} onPress={()=>void go()}>{busy?<ActivityIndicator color={theme.colors.primaryText}/>:<ThemedText style={s.primaryText}>Entrar al sistema</ThemedText>}</Pressable>
+            <View style={s.loginSecurity}><ThemedText style={s.loginSecurityIcon}>◆</ThemedText><ThemedText style={s.loginSecurityText}>Tus credenciales se protegen con el gestor de contraseñas de tu dispositivo.</ThemedText></View>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

@@ -53,5 +53,6 @@ export async function loadUi(path) {
     source = source.replaceAll(JSON.stringify(spec),JSON.stringify(resolved)).replaceAll("'"+spec+"'",JSON.stringify(resolved));
   }
   source=source.replace('require("../../assets/modal_open.mp3")', 'null');
+  source=source.replace('require("../../assets/brand-mark.png")', 'null');
   const result = uri(source); modules.set(url.href,result); return result;
 }
