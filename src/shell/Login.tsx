@@ -53,11 +53,14 @@ export function Login({onLogin}:{onLogin:(session:LoginSession,remember:boolean)
       <ScrollView automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" contentContainerStyle={[s.loginPage,compact&&s.loginPageCompact]}>
         <View style={[s.loginShell,compact&&s.loginShellCompact]}>
           <View style={[s.loginHero,compact&&s.loginHeroCompact]}>
+            {compact&&<><View style={s.loginHeroGlowLarge}/><View style={s.loginHeroGlowSmall}/></>}
             <View style={s.loginBrandRow}><View style={s.loginLogoFrame}><Image accessibilityLabel="El Espinazo del Diablo" resizeMode="contain" source={brandLogo} style={s.loginLogo}/></View><View><ThemedText style={s.loginBrandName}>El Espinazo</ThemedText><ThemedText style={s.loginBrandCaption}>Pizzas y Alitas</ThemedText></View></View>
             {!compact&&<View style={s.loginHeroCopy}><ThemedText style={s.loginHeroEyebrow}>GESTIÓN INTEGRAL</ThemedText><ThemedText style={s.heroTitle}>Todo tu negocio,{`\n`}en un solo lugar.</ThemedText><ThemedText style={s.loginHeroText}>Ventas, cocina, reparto e inventario conectados para trabajar con rapidez.</ThemedText></View>}
+            {compact&&<ThemedText style={s.loginMobileTagline}>Tu negocio, siempre bajo control.</ThemedText>}
             {!compact&&<View style={s.loginBenefits}><View style={s.loginBenefit}><ThemedText style={s.loginBenefitIcon}>✓</ThemedText><ThemedText style={s.loginBenefitText}>Información sincronizada</ThemedText></View><View style={s.loginBenefit}><ThemedText style={s.loginBenefitIcon}>✓</ThemedText><ThemedText style={s.loginBenefitText}>Acceso seguro para tu equipo</ThemedText></View></View>}
           </View>
           <View style={[s.loginForm,compact&&s.loginFormCompact]}>
+            {compact&&<View style={s.loginFormHandle}/>}
             <View style={s.loginHeading}><ThemedText style={s.eyebrow}>BIENVENIDO</ThemedText><ThemedText style={s.loginTitle}>Inicia sesión</ThemedText><ThemedText style={s.loginSubtitle}>Ingresa tus datos para continuar.</ThemedText></View>
             <View style={s.loginFields}>
               <TextInput nativeID="login-username" accessibilityLabel="Correo o usuario" placeholder="Correo o usuario" style={s.loginInput} value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} autoComplete="username" textContentType="username" importantForAutofill="yes" returnKeyType="next" blurOnSubmit={false} onSubmitEditing={()=>passwordInput.current?.focus()}/>
