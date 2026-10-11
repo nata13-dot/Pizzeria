@@ -51,13 +51,14 @@ export function Login({onLogin}:{onLogin:(session:LoginSession,remember:boolean)
   return <SafeAreaView style={s.loginSafeArea}>
     <KeyboardAvoidingView style={s.loginKeyboard} behavior={Platform.OS==="ios"?"padding":Platform.OS==="android"?"height":undefined}>
       <ScrollView automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive" keyboardShouldPersistTaps="handled" contentContainerStyle={[s.loginPage,compact&&s.loginPageCompact]}>
+        {!compact&&<><View style={s.loginBackdropGlow}/><View style={s.loginBackdropDot}/></>}
         <View style={[s.loginShell,compact&&s.loginShellCompact]}>
           <View style={[s.loginHero,compact&&s.loginHeroCompact]}>
-            {compact&&<><View style={s.loginHeroGlowLarge}/><View style={s.loginHeroGlowSmall}/></>}
+            <View style={[s.loginHeroGlowLarge,!compact&&s.loginHeroGlowDesktop]}/><View style={[s.loginHeroGlowSmall,!compact&&s.loginHeroGlowSmallDesktop]}/>
             <View style={s.loginBrandRow}><View style={s.loginLogoFrame}><Image accessibilityLabel="El Espinazo del Diablo" resizeMode="contain" source={brandLogo} style={s.loginLogo}/></View><View><ThemedText style={s.loginBrandName}>El Espinazo</ThemedText><ThemedText style={s.loginBrandCaption}>Pizzas y Alitas</ThemedText></View></View>
             {!compact&&<View style={s.loginHeroCopy}><ThemedText style={s.loginHeroEyebrow}>GESTIÓN INTEGRAL</ThemedText><ThemedText style={s.heroTitle}>Todo tu negocio,{`\n`}en un solo lugar.</ThemedText><ThemedText style={s.loginHeroText}>Ventas, cocina, reparto e inventario conectados para trabajar con rapidez.</ThemedText></View>}
             {compact&&<ThemedText style={s.loginMobileTagline}>Tu negocio, siempre bajo control.</ThemedText>}
-            {!compact&&<View style={s.loginBenefits}><View style={s.loginBenefit}><ThemedText style={s.loginBenefitIcon}>✓</ThemedText><ThemedText style={s.loginBenefitText}>Información sincronizada</ThemedText></View><View style={s.loginBenefit}><ThemedText style={s.loginBenefitIcon}>✓</ThemedText><ThemedText style={s.loginBenefitText}>Acceso seguro para tu equipo</ThemedText></View></View>}
+            {!compact&&<View style={s.loginOperations}><View style={s.loginOperationsHeading}><ThemedText style={s.loginOperationsTitle}>Operación conectada</ThemedText><View style={s.loginLive}><View style={s.loginLiveDot}/><ThemedText style={s.loginLiveText}>En línea</ThemedText></View></View><View style={s.loginModuleRow}>{["Punto de venta","Cocina","Reparto"].map((label,index)=><View key={label} style={s.loginModule}><View style={[s.loginModuleIcon,index===1&&s.loginModuleIconActive]}><ThemedText style={s.loginModuleGlyph}>{["▣","♨","➜"][index]}</ThemedText></View><ThemedText style={s.loginModuleText}>{label}</ThemedText></View>)}</View></View>}
           </View>
           <View style={[s.loginForm,compact&&s.loginFormCompact]}>
             {compact&&<View style={s.loginFormHandle}/>}
