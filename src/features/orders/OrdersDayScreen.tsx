@@ -10,15 +10,16 @@ import { useAppStyles } from "../../styles/appStyles";
 import type { Order, OrderStatus, PaginatedOrders } from "./types";
 import { ORDER_GROUPS, ORDER_STATUS_LABELS, OrderContents, openPhoneDialer } from "./shared";
 import {useTheme} from "../../theme/ThemeProvider";
+import { IconBadge, type IconTone } from "../../components/IconBadge";
 type KitchenSendFailure = { warnings: ApiStockWarning[]; message: string };
-const ORDER_GROUP_PRESENTATION: Record<string,{icon:string;description:string}>={
-  draft:{icon:"▤",description:"Pedidos guardados para continuar después."},
-  pending:{icon:"$",description:"Pedidos que esperan confirmación de pago."},
-  confirmed:{icon:"▣",description:"Confirmados y programados para preparación."},
-  process:{icon:"♨",description:"Pedidos que se encuentran en preparación o reparto."},
-  ready:{icon:"✓",description:"Listos para entrega o recolección."},
-  delivered:{icon:"➜",description:"Pedidos entregados durante la operación."},
-  cancelled:{icon:"×",description:"Pedidos cancelados durante la operación."},
+const ORDER_GROUP_PRESENTATION: Record<string,{icon:string;tone:IconTone;description:string}>={
+  draft:{icon:"▤",tone:"neutral",description:"Pedidos guardados para continuar después."},
+  pending:{icon:"$",tone:"warning",description:"Pedidos que esperan confirmación de pago."},
+  confirmed:{icon:"▣",tone:"info",description:"Confirmados y programados para preparación."},
+  process:{icon:"♨",tone:"warning",description:"Pedidos que se encuentran en preparación o reparto."},
+  ready:{icon:"✓",tone:"success",description:"Listos para entrega o recolección."},
+  delivered:{icon:"➜",tone:"info",description:"Pedidos entregados durante la operación."},
+  cancelled:{icon:"×",tone:"danger",description:"Pedidos cancelados durante la operación."},
 };
 
 function localDateKey(date = new Date()): string {
@@ -405,14 +406,14 @@ export function OrdersDayScreen({ token, branchId, isAdministrator }: { token: s
     const presentation=ORDER_GROUP_PRESENTATION[group.key];
     const active=activeGroup.key===group.key;
     return <Pressable accessibilityRole="button" accessibilityState={{selected:active}} key={group.key} onPress={()=>setActiveGroupKey(group.key)} style={({pressed})=>[s.orderStatusCard,active&&s.orderStatusCardActive,pressed&&s.metricPressed]}>
-      <View style={s.orderStatusHeading}><View style={[s.orderStatusIcon,active&&s.orderStatusIconActive]}><ThemedText style={[s.orderStatusGlyph,active&&s.orderStatusGlyphActive]}>{presentation.icon}</ThemedText></View><View style={s.orderStatusCopy}><ThemedText style={s.orderStatusTitle}>{group.label}</ThemedText><ThemedText style={s.orderStatusCount}>{groupOrders.length}</ThemedText></View><ThemedText style={s.orderStatusChevron}>›</ThemedText></View>
+      <View style={s.orderStatusHeading}><IconBadge glyph={presentation.icon} tone={presentation.tone} size="large" selected={active}/><View style={s.orderStatusCopy}><ThemedText style={s.orderStatusTitle}>{group.label}</ThemedText><ThemedText style={s.orderStatusCount}>{groupOrders.length}</ThemedText></View><ThemedText style={s.orderStatusChevron}>›</ThemedText></View>
       <View style={s.orderStatusBody}><ThemedText style={s.orderStatusEmptyIcon}>{groupOrders.length?presentation.icon:"○"}</ThemedText><ThemedText style={s.orderStatusBodyTitle}>{groupOrders.length?`${groupOrders.length} ${groupOrders.length===1?"pedido":"pedidos"}`:"Sin pedidos en este estado"}</ThemedText><ThemedText style={s.orderStatusDescription}>{presentation.description}</ThemedText><View style={[s.orderStatusAction,active&&s.orderStatusActionActive]}><ThemedText style={[s.orderStatusActionText,active&&s.orderStatusActionTextActive]}>{groupOrders.length?"Ver pedidos":"Consultar estado"}</ThemedText></View></View>
     </Pressable>;
   }
 
   return <View>
     <View style={[s.ordersToolbar, compact && s.ordersToolbarCompact]}>
-      <View style={s.ordersHeading}><View style={s.ordersDateIcon}><ThemedText style={s.ordersDateGlyph}>▣</ThemedText></View><View>
+      <View style={s.ordersHeading}><IconBadge glyph="▣" tone="info"/><View>
         <ThemedText style={s.sectionTitle}>Operación de {new Date(`${date}T00:00:00`).toLocaleDateString()}</ThemedText>
         <ThemedText style={s.muted}>{orders.length} pedido(s), incluyendo estados cerrados</ThemedText>
       </View></View>

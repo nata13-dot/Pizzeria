@@ -5,6 +5,7 @@ import { api } from "../../api";
 import type { Screen } from "../../navigation/modules";
 import { useAppStyles } from "../../styles/appStyles";
 import {useTheme} from "../../theme/ThemeProvider";
+import { IconBadge, type IconTone } from "../../components/IconBadge";
 export function DashboardScreen({token,onNavigate}:{token:string;onNavigate:(screen:Screen)=>void}) {
   const s=useAppStyles();
   const {theme}=useTheme();
@@ -21,10 +22,10 @@ export function DashboardScreen({token,onNavigate}:{token:string;onNavigate:(scr
   if(!values)return <ActivityIndicator color={theme.colors.primary} style={{margin:40}}/>;
   return (
     <View style={[s.metrics, compact && s.metricsCompact]}>
-      {[{label:"Ventas de hoy",icon:"$",tone:"good",screen:"cash" as Screen},{label:"Pedidos activos",icon:"≡",tone:"primary",screen:"orders" as Screen},{label:"Stock bajo",icon:"!",tone:"warning",screen:"inventory" as Screen},{label:"Por caducar",icon:"⌛",tone:"danger",screen:"inventory" as Screen}].map(
+      {([{label:"Ventas de hoy",icon:"$",tone:"success",screen:"cash" as Screen},{label:"Pedidos activos",icon:"≡",tone:"info",screen:"orders" as Screen},{label:"Stock bajo",icon:"!",tone:"warning",screen:"inventory" as Screen},{label:"Por caducar",icon:"⌛",tone:"danger",screen:"inventory" as Screen}] satisfies {label:string;icon:string;tone:IconTone;screen:Screen}[]).map(
         (item,i) => (
           <Pressable accessibilityRole="button" accessibilityLabel={`Abrir ${item.label}`} onPress={() => onNavigate(item.screen)} style={({pressed}) => [s.metric, compact && s.metricCompact, pressed && s.metricPressed]} key={item.label}>
-            <View style={[s.metricIcon, item.tone === "good" ? s.metricGood : item.tone === "warning" ? s.metricWarning : item.tone === "danger" ? s.metricDanger : s.metricPrimary]}><ThemedText style={s.metricIconText}>{item.icon}</ThemedText></View>
+            <IconBadge glyph={item.icon} tone={item.tone}/>
             <View><ThemedText style={[s.number, compact && s.numberCompact]}>{i===0?'$':''}{values[i]}</ThemedText>
             <ThemedText style={s.metricLabel}>{item.label}</ThemedText></View>
             <ThemedText style={s.metricLink}>Ver detalle →</ThemedText>

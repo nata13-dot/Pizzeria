@@ -18,6 +18,7 @@ import { ScreenContent } from "../navigation/ScreenContent";
 import { requestModuleNavigation, takeBackTarget } from "../navigation/controller";
 import { useAppStyles } from "../styles/appStyles";
 import { PressMotion, ScreenMotion } from "../motion/Motion";
+import { IconBadge } from "../components/IconBadge";
 import {Login,type LoginSession as Session} from "./Login";
 const labels=Object.fromEntries(appModules.map(module=>[module.id,module.label])) as Record<Screen,string>;
 const brandLogo=require("../../assets/brand-mark.png");
@@ -166,7 +167,7 @@ export function PizzeriaApp() {
               onPress={() => requestNavigation(module.id)}
               style={[s.navItem, currentScreen === module.id && s.navActive]}
             >
-              <ThemedText accessible={false} style={[s.navIcon, currentScreen === module.id && s.navActiveText]}>{module.icon}</ThemedText>
+              <IconBadge glyph={module.icon} tone={module.tone} size="small" selected={currentScreen === module.id}/>
               <ThemedText style={currentScreen === module.id ? s.navActiveText : s.navText}>
                 {module.label}
               </ThemedText>
@@ -193,7 +194,7 @@ export function PizzeriaApp() {
           </ScreenMotion>
         </ScrollView>
       </View>
-      {compact && <View accessibilityRole="tablist" accessibilityLabel="Módulos principales" style={s.bottomNav}>{quickModules.map((module) => {const active=currentScreen===module.id;return <PressMotion key={module.id} active={active} style={s.bottomMotionItem}><Pressable accessibilityRole="tab" accessibilityState={{selected:active}} accessibilityLabel={`${module.label}${active?", módulo actual":""}`} onPress={() => requestNavigation(module.id)} style={[s.bottomNavItem,active&&s.bottomNavItemActive]}><View style={[s.bottomIconWrap,active&&s.bottomIconActive]}><ThemedText accessible={false} style={[s.bottomIcon,active&&s.bottomIconActiveText]}>{module.icon}</ThemedText></View><ThemedText numberOfLines={1} style={[s.bottomLabel,active&&s.bottomTextActive]}>{module.label}</ThemedText></Pressable></PressMotion>})}<PressMotion active={!quickScreens.includes(currentScreen)} style={s.bottomMotionItem}><Pressable ref={moreTriggerRef} accessibilityRole="button" accessibilityLabel="Abrir más módulos" accessibilityState={{expanded:mobileMenuOpen,selected:!quickScreens.includes(currentScreen)}} onPress={() => setMobileMenuOpen(true)} style={[s.bottomNavItem,!quickScreens.includes(currentScreen)&&s.bottomNavItemActive]}><View style={[s.bottomIconWrap,!quickScreens.includes(currentScreen)&&s.bottomIconActive]}><ThemedText accessible={false} style={[s.bottomIcon,!quickScreens.includes(currentScreen)&&s.bottomIconActiveText]}>•••</ThemedText></View><ThemedText style={[s.bottomLabel,!quickScreens.includes(currentScreen)&&s.bottomTextActive]}>Más</ThemedText></Pressable></PressMotion></View>}
+      {compact && <View accessibilityRole="tablist" accessibilityLabel="Módulos principales" style={s.bottomNav}>{quickModules.map((module) => {const active=currentScreen===module.id;return <PressMotion key={module.id} active={active} style={s.bottomMotionItem}><Pressable accessibilityRole="tab" accessibilityState={{selected:active}} accessibilityLabel={`${module.label}${active?", módulo actual":""}`} onPress={() => requestNavigation(module.id)} style={[s.bottomNavItem,active&&s.bottomNavItemActive]}><IconBadge glyph={module.icon} tone={module.tone} size="small" selected={active}/><ThemedText numberOfLines={1} style={[s.bottomLabel,active&&s.bottomTextActive]}>{module.label}</ThemedText></Pressable></PressMotion>})}<PressMotion active={!quickScreens.includes(currentScreen)} style={s.bottomMotionItem}><Pressable ref={moreTriggerRef} accessibilityRole="button" accessibilityLabel="Abrir más módulos" accessibilityState={{expanded:mobileMenuOpen,selected:!quickScreens.includes(currentScreen)}} onPress={() => setMobileMenuOpen(true)} style={[s.bottomNavItem,!quickScreens.includes(currentScreen)&&s.bottomNavItemActive]}><IconBadge glyph="•••" tone="neutral" size="small" selected={!quickScreens.includes(currentScreen)}/><ThemedText style={[s.bottomLabel,!quickScreens.includes(currentScreen)&&s.bottomTextActive]}>Más</ThemedText></Pressable></PressMotion></View>}
       <ModuleSheet open={compact&&mobileMenuOpen} groups={navigationGroups} current={currentScreen} userName={session.user.name} roleName={session.user.role.name} onNavigate={requestNavigation} onLogout={logout} onClose={()=>setMobileMenuOpen(false)}/>
     </SafeAreaView></NavigationScopeProvider>
   );

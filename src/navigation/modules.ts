@@ -1,3 +1,5 @@
+import type { IconTone } from "../components/IconBadge";
+
 export type Screen = "dashboard" | "pos" | "cash" | "orders" | "inventory" | "purchases" | "production" | "products" | "kitchen" | "delivery" | "customers" | "users" | "reports" | "settings";
 export type ModuleGroupId = "home" | "sales" | "operations" | "catalog" | "analysis" | "administration";
 export type NavigationUser = { role: { slug: string }; permissions?: string[] };
@@ -7,25 +9,25 @@ export const moduleGroups: { id: ModuleGroupId; label: string }[] = [
   { id: "catalog", label: "Catálogo" }, { id: "analysis", label: "Análisis" }, { id: "administration", label: "Administración" },
 ];
 
-export type AppModule = { id: Screen; label: string; group: ModuleGroupId; icon: string; access: (user: NavigationUser) => boolean };
+export type AppModule = { id: Screen; label: string; group: ModuleGroupId; icon: string; tone: IconTone; access: (user: NavigationUser) => boolean };
 const has = (user: NavigationUser, permission: string) => user.permissions?.includes("*") || user.permissions?.includes(permission) || false;
 const admin = (user: NavigationUser) => user.role.slug === "administrador" || has(user, "*");
 
 export const appModules: AppModule[] = [
-  { id: "dashboard", label: "Resumen", group: "home", icon: "⌂", access: user => admin(user) || has(user,"cash.manage") && has(user,"orders.view") && has(user,"inventory.view") },
-  { id: "pos", label: "Punto de venta", group: "sales", icon: "▣", access: user => admin(user) || has(user,"pos.use") },
-  { id: "orders", label: "Pedidos", group: "sales", icon: "≡", access: user => admin(user) || has(user,"pos.use") && has(user,"orders.view") },
-  { id: "cash", label: "Caja del turno", group: "sales", icon: "$", access: user => admin(user) || has(user,"cash.manage") },
-  { id: "customers", label: "Clientes", group: "sales", icon: "C", access: user => admin(user) || has(user,"customers.manage") },
-  { id: "kitchen", label: "Cocina", group: "operations", icon: "♨", access: user => admin(user) || has(user,"kitchen.use") },
-  { id: "delivery", label: "Reparto", group: "operations", icon: "➜", access: user => admin(user) || has(user,"delivery.use") },
-  { id: "inventory", label: "Inventario", group: "operations", icon: "I", access: user => admin(user) || has(user,"inventory.view") },
-  { id: "purchases", label: "Compras", group: "operations", icon: "↓", access: user => admin(user) || has(user,"inventory.view") && has(user,"purchases.manage") },
-  { id: "production", label: "Producción", group: "operations", icon: "P", access: user => admin(user) || has(user,"inventory.view") && has(user,"production.manage") },
-  { id: "products", label: "Productos", group: "catalog", icon: "◫", access: admin },
-  { id: "reports", label: "Reportes", group: "analysis", icon: "↗", access: admin },
-  { id: "users", label: "Usuarios y permisos", group: "administration", icon: "U", access: admin },
-  { id: "settings", label: "Ajustes", group: "administration", icon: "⚙", access: () => true },
+  { id: "dashboard", label: "Resumen", group: "home", icon: "⌂", tone: "primary", access: user => admin(user) || has(user,"cash.manage") && has(user,"orders.view") && has(user,"inventory.view") },
+  { id: "pos", label: "Punto de venta", group: "sales", icon: "▣", tone: "success", access: user => admin(user) || has(user,"pos.use") },
+  { id: "orders", label: "Pedidos", group: "sales", icon: "≡", tone: "info", access: user => admin(user) || has(user,"pos.use") && has(user,"orders.view") },
+  { id: "cash", label: "Caja del turno", group: "sales", icon: "$", tone: "warning", access: user => admin(user) || has(user,"cash.manage") },
+  { id: "customers", label: "Clientes", group: "sales", icon: "C", tone: "primary", access: user => admin(user) || has(user,"customers.manage") },
+  { id: "kitchen", label: "Cocina", group: "operations", icon: "♨", tone: "warning", access: user => admin(user) || has(user,"kitchen.use") },
+  { id: "delivery", label: "Reparto", group: "operations", icon: "➜", tone: "info", access: user => admin(user) || has(user,"delivery.use") },
+  { id: "inventory", label: "Inventario", group: "operations", icon: "I", tone: "success", access: user => admin(user) || has(user,"inventory.view") },
+  { id: "purchases", label: "Compras", group: "operations", icon: "↓", tone: "warning", access: user => admin(user) || has(user,"inventory.view") && has(user,"purchases.manage") },
+  { id: "production", label: "Producción", group: "operations", icon: "P", tone: "danger", access: user => admin(user) || has(user,"inventory.view") && has(user,"production.manage") },
+  { id: "products", label: "Productos", group: "catalog", icon: "◫", tone: "primary", access: admin },
+  { id: "reports", label: "Reportes", group: "analysis", icon: "↗", tone: "info", access: admin },
+  { id: "users", label: "Usuarios y permisos", group: "administration", icon: "U", tone: "success", access: admin },
+  { id: "settings", label: "Ajustes", group: "administration", icon: "⚙", tone: "neutral", access: () => true },
 ];
 
 export const moduleById = new Map(appModules.map(module => [module.id,module]));
