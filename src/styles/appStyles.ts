@@ -358,7 +358,7 @@ export const createAppStyles=(theme:Theme)=>StyleSheet.create({
     boardColumn: { borderLeftColor: theme.colors.border, borderLeftWidth: 1, flex: 1, gap: 9, minWidth: 0, paddingHorizontal: 10 },
     boardColumnCompact: { minWidth: 0, width: "100%" },
     boardTitle: { fontSize: 13 * theme.fontScale, fontWeight: "900", letterSpacing: .5, marginBottom: 4, textAlign: "center" },
-    kitchenOrder: { ...theme.shadows.surface, backgroundColor: theme.mode === "dark" ? "#302C22" : "#FFF8E5", borderColor: theme.mode === "dark" ? "#5B523D" : "#E6D8B8", borderRadius: 10, borderWidth: 1, gap: 10, marginBottom: 8, overflow: "visible", paddingBottom: 20, paddingLeft: 30, paddingRight: 16, paddingTop: 22, position: "relative", width: "100%" },
+    kitchenOrder: { ...theme.shadows.floating, backgroundColor: theme.mode === "dark" ? "#302C22" : "#FFF8E5", borderColor: theme.mode === "dark" ? "#5B523D" : "#E6D8B8", borderRadius: 10, borderWidth: 1, elevation: 8, gap: 10, marginBottom: 12, overflow: "visible", paddingBottom: 20, paddingLeft: 30, paddingRight: 16, paddingTop: 22, position: "relative", shadowOffset: {width:0,height:8}, shadowOpacity: theme.mode === "dark" ? .5 : .2, shadowRadius: 14, width: "100%" },
     kitchenPaperHoles: { flexDirection: "row", justifyContent: "space-around", left: 10, position: "absolute", right: 10, top: -6 },
     kitchenPaperHole: { backgroundColor: theme.colors.background, borderColor: theme.colors.border, borderRadius: 6, borderWidth: 1, height: 11, width: 11 },
     kitchenPaperMargin: { backgroundColor: theme.colors.primary, bottom: 13, left: 18, opacity: .48, position: "absolute", top: 17, width: 1 },
