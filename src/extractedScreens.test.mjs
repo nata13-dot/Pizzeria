@@ -4,19 +4,32 @@ import React from 'react';
 import {JSDOM} from 'jsdom';
 import {loadUi} from './testSupport/loadUi.mjs';
 const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'http://localhost'});globalThis.window=dom.window;globalThis.document=dom.window.document;globalThis.IS_REACT_ACT_ENVIRONMENT=true;Object.defineProperty(globalThis,'navigator',{value:{userAgent:'test'},configurable:true});
-const {render,fireEvent,waitFor,cleanup}=await import('@testing-library/react');
+const {render,fireEvent,waitFor,cleanup,act}=await import('@testing-library/react');
 const {ReportsScreen}=await import(await loadUi('features/reports/ReportsScreen.tsx'));
 const {KitchenBoard}=await import(await loadUi('features/kitchen/KitchenBoard.tsx'));
 const {DeliveryBoard}=await import(await loadUi('features/delivery/DeliveryBoard.tsx'));
 const {OperationalOrdersScreen}=await import(await loadUi('features/orders/OperationalOrdersScreen.tsx'));
 const {OrdersDayScreen}=await import(await loadUi('features/orders/OrdersDayScreen.tsx'));
-afterEach(()=>{cleanup();delete globalThis.__confirmWork;delete globalThis.__ordersChannel;delete globalThis.__appStateListener;delete globalThis.__testWidth;});
+afterEach(()=>{cleanup();delete globalThis.__confirmWork;delete globalThis.__ordersChannel;delete globalThis.__appStateListener;delete globalThis.__testWidth;delete globalThis.__panResponderConfig;});
 const order=(status,type='pickup')=>({id:4,daily_number:12,status,type,total:'100.00',items:[{id:1,name:'Pizza',quantity:1}],histories:[]});
 test('reports mounts directly and performs only its own initial query',async()=>{
  const calls=[];globalThis.__p0Api=async path=>{calls.push(path);return {gross_sales:100};};const view=render(React.createElement(ReportsScreen,{token:'t'}));await waitFor(()=>assert.equal(calls.length,1));assert.deepEqual(calls,['/reports/cash-day']);assert.ok(view.getByText('Reporte de Caja'));
 });
 test('kitchen board preserves its state transition and shared printing action',async()=>{
  globalThis.__confirmWork=()=>true;let transition=null;const view=render(React.createElement(KitchenBoard,{orders:[order('kitchen_pending')],token:'t',onAction:async(_order,status)=>{transition=status;return true;}}));fireEvent.click(view.getByText(/INICIAR PREPARACIÓN/));await waitFor(()=>assert.equal(transition,'preparing'));assert.ok(view.getByText(/Imprimir comanda/));
+});
+test('kitchen command looks like a paper note and the content swipe changes tabs on web',()=>{
+ globalThis.__testWidth=390;
+ const pending={...order('kitchen_pending'),notes:'Sin cebolla'};
+ const preparing={...order('preparing'),id:5,daily_number:13};
+ const view=render(React.createElement(KitchenBoard,{orders:[pending,preparing],token:'t',onAction:async()=>true}));
+ assert.ok(view.getByLabelText('Comanda 12'));
+ assert.ok(view.getByText('NOTA DEL CLIENTE'));
+ assert.equal(view.getByRole('tab',{name:/Pendientes/}).getAttribute('aria-selected'),'true');
+ assert.equal(globalThis.__panResponderConfig.onMoveShouldSetPanResponder({}, {dx:-24,dy:3}),true);
+ act(()=>globalThis.__panResponderConfig.onPanResponderRelease({}, {dx:-90,dy:4,vx:-.5}));
+ assert.equal(view.getByRole('tab',{name:/Preparando/}).getAttribute('aria-selected'),'true');
+ assert.ok(view.getByText('#013'));
 });
 test('delivery board preserves operational transition, contact and document controls',async()=>{
  globalThis.__confirmWork=()=>true;let transition=null;const delivery={...order('ready','delivery'),delivery:{recipient:'Ana',phone:'5551234',address:'Centro'},collection_required:false,amount_due:'0'};const view=render(React.createElement(DeliveryBoard,{orders:[delivery],token:'t',onAction:async(_order,status)=>{transition=status;return true;},onReload:()=>{}}));fireEvent.click(view.getByText('Marcar en camino'));await waitFor(()=>assert.equal(transition,'on_way'));assert.ok(view.getByText('☎ Llamar'));assert.ok(view.getByText('Imprimir reparto'));

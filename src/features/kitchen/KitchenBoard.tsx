@@ -1,8 +1,7 @@
 import {ThemedText} from "../../theme/ThemedText";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, PanResponder, Platform, Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, PanResponder, Pressable, ScrollView, Text, View } from "react-native";
 import { useResponsiveLayout } from "../../layout/responsive";
-import { Capacitor } from "@capacitor/core";
 import { confirmAction } from "../../components/ConfirmationDialog";
 import { useAppStyles } from "../../styles/appStyles";
 import type { Order, OrderItem, OrderStatus, OrderStatusAction } from "../orders/types";
@@ -21,11 +20,10 @@ export function KitchenBoard({ orders, token, onAction }: { orders: Order[]; tok
     { status: "preparing", title: "Preparando", empty: "No hay pedidos en preparación", icon: "♨" },
     { status: "prepared", title: "Listos", empty: "No hay pedidos listos para entregar", icon: "✓" },
   ];
-  const nativeApp = Platform.OS !== "web" || Capacitor.isNativePlatform();
   const activeStatusRef = useRef(activeStatus);
   activeStatusRef.current = activeStatus;
   const swipeResponder = useMemo(() => PanResponder.create({
-    onMoveShouldSetPanResponder: (_event, gesture) => nativeApp && compact && Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
+    onMoveShouldSetPanResponder: (_event, gesture) => compact && Math.abs(gesture.dx) > 12 && Math.abs(gesture.dx) > Math.abs(gesture.dy) * 1.4,
     onPanResponderRelease: (_event, gesture) => {
       const isIntentionalSwipe = Math.abs(gesture.dx) >= 70 || (Math.abs(gesture.dx) >= 35 && Math.abs(gesture.vx) >= 0.35);
       if (!isIntentionalSwipe) return;
@@ -35,7 +33,7 @@ export function KitchenBoard({ orders, token, onAction }: { orders: Order[]; tok
       if (nextIndex !== currentIndex) setActiveStatus(columns[nextIndex].status);
     },
     onPanResponderTerminationRequest: () => true,
-  }), [compact, nativeApp]);
+  }), [compact]);
   async function advance(order: Order) {
     if (actionLocks.current.has(order.id)) return;
     actionLocks.current.add(order.id);
@@ -54,16 +52,18 @@ export function KitchenBoard({ orders, token, onAction }: { orders: Order[]; tok
     {compact && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.kitchenTabs}>{columns.map((column) => {
       const count = orders.filter((order) => order.status === column.status).length;
       const tone = kitchenTone(column.status,theme);
-      return <Pressable key={column.status} onPress={() => setActiveStatus(column.status)} style={[s.kitchenTab, activeStatus === column.status && s.kitchenTabActive, activeStatus === column.status && { borderBottomColor: tone }]}><ThemedText style={[s.kitchenTabText, activeStatus === column.status && { color: tone }]}>{column.title} ({count})</ThemedText></Pressable>;
+      return <Pressable accessibilityRole="tab" accessibilityState={{selected:activeStatus===column.status}} key={column.status} onPress={() => setActiveStatus(column.status)} style={[s.kitchenTab, activeStatus === column.status && s.kitchenTabActive, activeStatus === column.status && { borderBottomColor: tone }]}><ThemedText style={[s.kitchenTabText, activeStatus === column.status && { color: tone }]}>{column.title} ({count})</ThemedText></Pressable>;
     })}</ScrollView>}
-    <View {...(nativeApp && compact ? swipeResponder.panHandlers : {})} style={[s.board, compact && s.boardCompact]}>{visibleColumns.map(({ status, title, empty, icon }) => {
+    <View accessibilityLabel={compact?"Pedidos de cocina. Desliza horizontalmente para cambiar de etapa.":undefined} {...(compact ? swipeResponder.panHandlers : {})} style={[s.board, compact && s.boardCompact]}>{visibleColumns.map(({ status, title, empty, icon }) => {
     const columnOrders = orders.filter((order) => order.status === status);
     const tone = kitchenTone(status,theme);
     return <View style={[s.boardColumn, compact && s.boardColumnCompact]} key={status}>
       {!compact && <ThemedText style={[s.boardTitle, { color: tone }]}>{title.toUpperCase()} ({columnOrders.length})</ThemedText>}
       {columnOrders.map((order) => {
         const working = workingOrderIds.includes(order.id);
-        return <View style={s.kitchenOrder} key={order.id}>
+        return <View accessibilityLabel={`Comanda ${order.daily_number}`} style={s.kitchenOrder} key={order.id}>
+          <View pointerEvents="none" style={s.kitchenPaperHoles}>{Array.from({length:11},(_,index)=><View key={index} style={s.kitchenPaperHole}/>)}</View>
+          <View pointerEvents="none" style={s.kitchenPaperMargin}/>
           <View style={s.kitchenOrderHeader}><ThemedText style={s.kitchenOrderNo}>#{String(order.daily_number).padStart(3, "0")}</ThemedText><KitchenTimerBadge order={order} /></View>
           <View style={s.kitchenBadges}><ThemedText style={s.kitchenTypeBadge}>{kitchenServiceLabel(order)}</ThemedText>{kitchenCustomerLabel(order) && <ThemedText style={s.kitchenCustomerBadge}>{kitchenCustomerLabel(order)}</ThemedText>}</View>
           <View style={s.kitchenProducts}>{(order.items ?? []).map((item, index) => <KitchenItem item={item} key={item.id ?? `${item.name}-${index}`} />)}</View>
@@ -71,6 +71,7 @@ export function KitchenBoard({ orders, token, onAction }: { orders: Order[]; tok
           <ThemedText style={s.kitchenStageTime}>{kitchenStageTime(order)}</ThemedText>
           <Pressable disabled={working} style={[s.kitchenAction, { backgroundColor: tone }, working && s.disabled]} onPress={() => advance(order)}>{working ? <ActivityIndicator color={theme.colors.primaryText} /> : <ThemedText style={s.kitchenActionText}>{status === "kitchen_pending" ? "♨  INICIAR PREPARACIÓN" : status === "preparing" ? "✓  TERMINAR" : order.type === "delivery" ? "▣  LISTO PARA REPARTO" : "▣  LISTO PARA ENTREGAR"}</ThemedText>}</Pressable>
           <DocumentButton order={order} token={token} kind="kitchen" compact />
+          <View pointerEvents="none" style={s.kitchenPaperTear}>{Array.from({length:15},(_,index)=><View key={index} style={s.kitchenPaperTooth}/>)}</View>
         </View>})}
       {!columnOrders.length && <View style={s.kitchenEmpty}><ThemedText style={[s.kitchenEmptyIcon, { color: tone }]}>{icon}</ThemedText><ThemedText style={s.kitchenEmptyTitle}>{empty}</ThemedText><View style={[s.kitchenEmptyLine, { backgroundColor: tone }]} /></View>}
     </View>;
