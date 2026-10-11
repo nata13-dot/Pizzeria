@@ -57,8 +57,8 @@ test('lost response is recovered without another POST or payment, kitchen remain
  await waitFor(()=>assert.ok(view.getByText('Orden #9 registrada')));assert.equal(posts,1);assert.equal(kitchen,0);assert.deepEqual(store.get('pos','cart',[]),[]);
  fireEvent.click(view.getByText('Reintentar envío a cocina'));await waitFor(()=>assert.equal(kitchen,1));await waitFor(()=>assert.equal(store.operation,null));assert.equal(posts,1);
 });
-test('stock shortage recovery explains missing inventory and authorizes the same order',async()=>{
- setup();globalThis.__confirmWork=()=>true;globalThis.__canOverrideStock=true;const catalog=globalThis.__p0Api;let posts=0,kitchen=0;
+test('stock shortage recovery explains missing inventory and authorizes from the visible modal',async()=>{
+ setup();let confirmations=0;globalThis.__confirmWork=()=>{confirmations++;return true;};globalThis.__canOverrideStock=true;const catalog=globalThis.__p0Api;let posts=0,kitchen=0;
  globalThis.__p0Api=async(path,token,options)=>{
    if(path==='/orders'){posts++;return {id:53,daily_number:1,status:'confirmed',total:270,stock_warnings:[{ingredient_id:18,name:'Queso mozzarella',shortage:400}]};}
    if(path.endsWith('/send-to-kitchen')){kitchen++;assert.deepEqual(JSON.parse(options.body),{allow_stock_shortage:true});return {id:53,daily_number:1,status:'kitchen_pending',total:270};}
@@ -68,7 +68,7 @@ test('stock shortage recovery explains missing inventory and authorizes the same
  fireEvent.click(view.getByText('Confirmar y enviar a cocina'));await waitFor(()=>assert.ok(view.getByText('Inventario insuficiente')));
  assert.ok(view.getByLabelText('Completar envío a cocina'));assert.ok(view.getByText('Queso mozzarella: faltan 400'));
  assert.equal(view.getByText('Autorizar faltante y enviar a cocina').closest('button').tagName,'BUTTON');assert.equal(view.getByText('Continuar con otra venta').closest('button').tagName,'BUTTON');assert.equal(posts,1);assert.equal(kitchen,0);
- fireEvent.click(view.getByText('Autorizar faltante y enviar a cocina'));await waitFor(()=>assert.equal(kitchen,1));await waitFor(()=>assert.equal(store.operation,null));assert.equal(posts,1);
+ assert.equal(confirmations,1);fireEvent.click(view.getByText('Autorizar faltante y enviar a cocina'));await waitFor(()=>assert.equal(kitchen,1));await waitFor(()=>assert.equal(store.operation,null));assert.equal(posts,1);assert.equal(confirmations,1);
 });
 test('submitting keeps the POS visible under a blocking loading modal',async()=>{
  setup();globalThis.__confirmWork=()=>true;const catalog=globalThis.__p0Api;let release;
