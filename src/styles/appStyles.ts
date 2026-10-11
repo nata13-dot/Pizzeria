@@ -122,7 +122,7 @@ export const createAppStyles=(theme:Theme)=>StyleSheet.create({
     loginModuleGlyph: { color: theme.colors.textInverse, fontSize: 17 * theme.fontScale, fontWeight: "900" },
     loginModuleText: { color: theme.colors.textInverseMuted, fontSize: 10 * theme.fontScale, fontWeight: "700", textAlign: "center" },
     loginForm: { ...theme.shadows.surface, alignSelf: "center", backgroundColor: theme.colors.surface, borderColor: theme.colors.border, borderRadius: theme.radius.section, borderWidth: 1, flex: .85, gap: 18, margin: 28, maxWidth: 460, minWidth: 0, padding: 38, width: "100%" },
-    loginFormCompact: { ...theme.shadows.floating, alignSelf: "stretch", borderRadius: theme.radius.modal, flexBasis: "auto", flexGrow: 0, flexShrink: 0, marginHorizontal: 16, marginTop: -30, paddingBottom: 28, paddingHorizontal: 24, paddingTop: 16, zIndex: 2 },
+    loginFormCompact: { ...theme.shadows.floating, alignSelf: "stretch", borderRadius: theme.radius.modal, flexBasis: "auto", flexGrow: 0, flexShrink: 0, marginHorizontal: 16, marginTop: -30, paddingBottom: 28, paddingHorizontal: 24, paddingTop: 16, width: "auto", zIndex: 2 },
     loginFormHandle: { alignSelf: "center", backgroundColor: theme.colors.borderStrong, borderRadius: 3, height: 5, marginBottom: 11, opacity: .55, width: 42 },
     loginHeading: { marginBottom: 3 },
     loginTitle: { color: theme.colors.text, fontSize: 30 * theme.fontScale, fontWeight: "900", letterSpacing: -.6, lineHeight: 38 * theme.fontScale },
