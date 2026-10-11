@@ -65,4 +65,8 @@ test('orders screen loads every page once through the extracted component',async
  await waitFor(()=>assert.ok(view.getByText(/2 pedido\(s\)/)));
  assert.equal(calls.filter(path=>path.includes('/orders?date=')).length,2);
  assert.equal(calls.filter(path=>path.endsWith('page=1')).length,1);assert.equal(calls.filter(path=>path.endsWith('page=2')).length,1);
+ fireEvent.click(view.getByText('Confirmados y programados'));
+ assert.ok(view.getByText('Orden #12'));
+ fireEvent.click(view.getByText('Listos'));
+ assert.ok(view.getByText('Orden #13'));
 });

@@ -11,6 +11,15 @@ import type { Order, OrderStatus, PaginatedOrders } from "./types";
 import { ORDER_GROUPS, ORDER_STATUS_LABELS, OrderContents, openPhoneDialer } from "./shared";
 import {useTheme} from "../../theme/ThemeProvider";
 type KitchenSendFailure = { warnings: ApiStockWarning[]; message: string };
+const ORDER_GROUP_PRESENTATION: Record<string,{icon:string;description:string}>={
+  draft:{icon:"▤",description:"Pedidos guardados para continuar después."},
+  pending:{icon:"$",description:"Pedidos que esperan confirmación de pago."},
+  confirmed:{icon:"▣",description:"Confirmados y programados para preparación."},
+  process:{icon:"♨",description:"Pedidos que se encuentran en preparación o reparto."},
+  ready:{icon:"✓",description:"Listos para entrega o recolección."},
+  delivered:{icon:"➜",description:"Pedidos entregados durante la operación."},
+  cancelled:{icon:"×",description:"Pedidos cancelados durante la operación."},
+};
 
 function localDateKey(date = new Date()): string {
   const year = date.getFullYear();
@@ -43,6 +52,7 @@ export function OrdersDayScreen({ token, branchId, isAdministrator }: { token: s
   const [workingOrderIds, setWorkingOrderIds] = useState<number[]>([]);
   const [sendFailures, setSendFailures] = useState<Record<number, KitchenSendFailure>>({});
   const [cancellationReasons, setCancellationReasons] = useState<Record<number, string>>({});
+  const [activeGroupKey,setActiveGroupKey]=useState("process");
   const loadRequestId = useRef(0);
   const loadInFlight = useRef<Promise<Order[] | null> | null>(null);
   const loadInFlightSource = useRef("");
@@ -388,26 +398,37 @@ export function OrdersDayScreen({ token, branchId, isAdministrator }: { token: s
     </View>;
   }
 
+  const activeGroup=ORDER_GROUPS.find((group)=>group.key===activeGroupKey)??ORDER_GROUPS[0];
+  const activeOrders=orders.filter((order)=>activeGroup.statuses.includes(order.status));
+  function groupSummary(group:(typeof ORDER_GROUPS)[number]){
+    const groupOrders=orders.filter((order)=>group.statuses.includes(order.status));
+    const presentation=ORDER_GROUP_PRESENTATION[group.key];
+    const active=activeGroup.key===group.key;
+    return <Pressable accessibilityRole="button" accessibilityState={{selected:active}} key={group.key} onPress={()=>setActiveGroupKey(group.key)} style={({pressed})=>[s.orderStatusCard,active&&s.orderStatusCardActive,pressed&&s.metricPressed]}>
+      <View style={s.orderStatusHeading}><View style={[s.orderStatusIcon,active&&s.orderStatusIconActive]}><ThemedText style={[s.orderStatusGlyph,active&&s.orderStatusGlyphActive]}>{presentation.icon}</ThemedText></View><View style={s.orderStatusCopy}><ThemedText style={s.orderStatusTitle}>{group.label}</ThemedText><ThemedText style={s.orderStatusCount}>{groupOrders.length}</ThemedText></View><ThemedText style={s.orderStatusChevron}>›</ThemedText></View>
+      <View style={s.orderStatusBody}><ThemedText style={s.orderStatusEmptyIcon}>{groupOrders.length?presentation.icon:"○"}</ThemedText><ThemedText style={s.orderStatusBodyTitle}>{groupOrders.length?`${groupOrders.length} ${groupOrders.length===1?"pedido":"pedidos"}`:"Sin pedidos en este estado"}</ThemedText><ThemedText style={s.orderStatusDescription}>{presentation.description}</ThemedText><View style={[s.orderStatusAction,active&&s.orderStatusActionActive]}><ThemedText style={[s.orderStatusActionText,active&&s.orderStatusActionTextActive]}>{groupOrders.length?"Ver pedidos":"Consultar estado"}</ThemedText></View></View>
+    </Pressable>;
+  }
+
   return <View>
     <View style={[s.ordersToolbar, compact && s.ordersToolbarCompact]}>
-      <View>
+      <View style={s.ordersHeading}><View style={s.ordersDateIcon}><ThemedText style={s.ordersDateGlyph}>▣</ThemedText></View><View>
         <ThemedText style={s.sectionTitle}>Operación de {new Date(`${date}T00:00:00`).toLocaleDateString()}</ThemedText>
         <ThemedText style={s.muted}>{orders.length} pedido(s), incluyendo estados cerrados</ThemedText>
-      </View>
+      </View></View>
       <Pressable disabled={refreshing} style={[s.secondaryButton, refreshing && s.disabled]} onPress={() => load(false, true)}>
-        <ThemedText style={s.secondaryText}>{refreshing ? "Actualizando..." : "Actualizar"}</ThemedText>
+        <ThemedText style={s.secondaryText}>{refreshing ? "Actualizando..." : "↻  Actualizar"}</ThemedText>
       </Pressable>
     </View>
     {!!error && <View style={s.warningBox}><ThemedText style={s.error}>{error}</ThemedText><Pressable style={s.secondaryButton} onPress={() => load(!orders.length, true)}><ThemedText style={s.secondaryText}>Reintentar actualización</ThemedText></Pressable></View>}
     {!!actionError && <ThemedText style={s.error}>{actionError}</ThemedText>}
     {!!notice && <ThemedText style={s.notice}>{notice}</ThemedText>}
-    {busy ? <ActivityIndicator color={theme.colors.primary} style={{ margin: 40 }} /> : ORDER_GROUPS.map((group) => {
-      const groupOrders = orders.filter((order) => group.statuses.includes(order.status));
-      return <View style={s.orderGroup} key={group.key}>
-        <ThemedText style={s.boardTitle}>{group.label} ({groupOrders.length})</ThemedText>
-        {groupOrders.map(orderCard)}
-        {!groupOrders.length && <ThemedText style={s.groupEmpty}>Sin pedidos en este estado.</ThemedText>}
-      </View>;
-    })}
+    {busy ? <ActivityIndicator color={theme.colors.primary} style={{ margin: 40 }} /> : <>
+      {compact?<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.ordersOverviewMobile}>{ORDER_GROUPS.map(groupSummary)}</ScrollView>:<View style={s.ordersOverviewGrid}>{ORDER_GROUPS.map(groupSummary)}</View>}
+      <View style={s.ordersDetailPanel}><View style={s.ordersDetailHeading}><View><ThemedText style={s.ordersDetailEyebrow}>DETALLE DEL ESTADO</ThemedText><ThemedText style={s.sectionTitle}>{activeGroup.label}</ThemedText></View><ThemedText style={s.ordersDetailCount}>{activeOrders.length}</ThemedText></View>
+        {activeOrders.map(orderCard)}
+        {!activeOrders.length&&<View style={s.ordersDetailEmpty}><ThemedText style={s.orderStatusEmptyIcon}>○</ThemedText><ThemedText style={s.orderStatusBodyTitle}>No hay pedidos para mostrar</ThemedText><ThemedText style={s.orderStatusDescription}>{ORDER_GROUP_PRESENTATION[activeGroup.key].description}</ThemedText></View>}
+      </View>
+    </>}
   </View>;
 }
