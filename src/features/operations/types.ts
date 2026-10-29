@@ -37,6 +37,8 @@ export type IngredientPresentation = {
   active: boolean;
   equivalent_unit?: Unit | null;
   purchase_revision?: string;
+  /** Price per presentation in its most recent purchase. */
+  last_unit_cost?: number | null;
 };
 
 export type Ingredient = {
@@ -132,6 +134,14 @@ export type PurchaseItem = {
   expires_at?: string | null;
   lot_code?: string | null;
   ingredient?: Ingredient | null;
+  presentation?: IngredientPresentation | null;
+};
+
+export type PurchaseSuggestion = {
+  ingredient: Pick<Ingredient, "id" | "name" | "base_unit_id" | "current_stock" | "minimum_stock" | "base_unit"> & { missing_to_minimum: NumericValue; stock_status: InventoryStatus };
+  presentations: IngredientPresentation[];
+  suggested_presentation_id: number | null;
+  suggested_quantity: number | null;
 };
 
 export type Purchase = {
