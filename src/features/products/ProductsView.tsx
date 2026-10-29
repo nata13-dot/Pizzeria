@@ -1,130 +1,33 @@
 import {ThemedText} from "../../theme/ThemedText";
-import { useEffect, useRef, useState } from "react";
-import { FlatList, Image, Pressable, Text, View } from "react-native";
+import { useRef, useState } from "react";
+import { FlatList, Image, Pressable, View } from "react-native";
 import { api, ApiError } from "../../api";
-import { cachedApi } from "../../apiCache";
 import { ActionButton } from "../../components/ActionButton";
 import { confirmAction } from "../../components/ConfirmationDialog";
 import { FloatingTextInput as TextInput } from "../../components/FloatingTextInput";
 import { Notice, useFeedback } from "../../components/Notice";
-import { Pagination, RemoteListStatus } from "../../components/RemoteListStatus";
 import { LogoPicker } from "../administration/LogoPicker";
-import { SaleRecipes } from "../recipes/SaleRecipes";
 import { variantErrors } from "../../forms/catalogValidation";
 import { useActionGate } from "../../forms/useActionGate";
 import { useFormErrors } from "../../forms/useFormErrors";
 import { decimalInput, moneyInput, operationError, required } from "../../forms/validation";
-import { usePaginatedResource } from "../../hooks/useRemoteResource";
 import { useResponsiveLayout } from "../../layout/responsive";
 import { resolveProductSave, type ConfigurationAttempt } from "../../productConfiguration";
 import { allowsStuffedCrust } from "../../productRules";
 import { useAppStyles } from "../../styles/appStyles";
-import { useWork, useWorkField, useWorkGuard } from "../../work/WorkProvider";
+import { useWork, useWorkGuard } from "../../work/WorkProvider";
 import { Empty } from "../orders/shared";
+import { productTypeLabel, productTypes } from "./productTypes";
 function createOrderIdempotencyKey(): string {
   return `pos-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}-${Math.random().toString(36).slice(2, 12)}`;
-}
-export function ComboManager({ data, token }: { data: any[]; token: string }) {
-  const s = useAppStyles();
-  const { compact } = useResponsiveLayout();
-  const variants = data.flatMap((product: any) => (product.variants ?? []).map((variant: any) => ({ ...variant, product })));
-  const [kind, setKind] = useState<"package" | "promotion">("package");
-  const [name, setName] = useState("");
-  const [price, setPrice] = useState("");
-  const [comboImage, setComboImage] = useState("");
-  const [selectedVariantId, setSelectedVariantId] = useState<number | null>(null);
-  const [quantity, setQuantity] = useState("1");
-  const [items, setItems] = useState<any[]>([]);
-  const [combos, setCombos] = useState<any[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [editingImageId, setEditingImageId] = useState<number | null>(null);
-  const [editingImage, setEditingImage] = useState("");
-  const comboRows = Array.isArray(combos) ? combos : [];
-  const load = () => api<any[]>("/combos", token).then(setCombos).catch((error) => setMessage((error as Error).message));
-  useEffect(() => { load(); }, [token]);
-  useEffect(() => { if (!selectedVariantId && variants[0]) setSelectedVariantId(variants[0].id); }, [data]);
-  function addItem() {
-    const variant = variants.find((entry: any) => entry.id === selectedVariantId);
-    const parsed = Number(quantity);
-    if (!variant || parsed <= 0) return;
-    const next = { product_variant_id: variant.id, quantity: parsed, flavor_required: Boolean(variant.product.flavors?.length), options: [], label: `${variant.product.name} · ${variant.name}` };
-    setItems((current) => kind === "promotion" ? [next] : [...current, next]);
-    setQuantity(kind === "promotion" ? "2" : "1");
-  }
-  async function save() {
-    if (!name.trim() || Number(price) < 0 || !items.length) return;
-    setBusy(true); setMessage("");
-    try {
-      const payloadItems = items.flatMap(({ label: _label, ...item }) => kind === "package" && Number.isInteger(Number(item.quantity)) && Number(item.quantity) > 1 ? Array.from({ length: Number(item.quantity) }, () => ({ ...item, quantity: 1 })) : item);
-      await api("/combos", token, { method: "POST", body: JSON.stringify({ name: name.trim(), price: Number(price), image_data_uri: comboImage || null, items: payloadItems }) });
-      setName(""); setPrice(""); setComboImage(""); setItems([]); setMessage(kind === "promotion" ? "Promoción creada." : "Paquete creado."); await load();
-    } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
-  }
-  async function remove(combo: any) {
-    if (!(await confirmAction(`¿Eliminar ${combo.name}?`))) return;
-    setBusy(true); setMessage("");
-    try { await api(`/combos/${combo.id}`, token, { method: "DELETE" }); setMessage("Paquete o promoción eliminado."); await load(); }
-    catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
-  }
-  async function saveImage(combo: any) {
-    setBusy(true); setMessage("");
-    try {
-      await api(`/combos/${combo.id}`, token, { method: "PATCH", body: JSON.stringify({ image_data_uri: editingImage || null }) });
-      setEditingImageId(null); setEditingImage(""); setMessage(editingImage ? "Imagen del paquete actualizada." : "Imagen del paquete eliminada."); await load();
-    } catch (error) { setMessage((error as Error).message); } finally { setBusy(false); }
-  }
-  return <View style={s.formCard}>
-    <ThemedText style={s.sectionTitle}>Paquetes y promociones</ThemedText>
-    <ThemedText style={s.formIntro}>Combina productos y define un precio único. En Caja se elegirá el sabor cuando corresponda.</ThemedText>
-    <View style={[s.comboWorkspace, compact && s.comboWorkspaceCompact]}>
-      <View style={s.comboBuilder}>
-        <View style={s.types}>
-          <Pressable onPress={() => { setKind("package"); setItems([]); setQuantity("1"); }} style={[s.type, kind === "package" && s.typeActive]}><ThemedText>Paquete de productos</ThemedText></Pressable>
-          <Pressable onPress={() => { setKind("promotion"); setItems([]); setQuantity("2"); }} style={[s.type, kind === "promotion" && s.typeActive]}><ThemedText>Promoción por piezas</ThemedText></Pressable>
-        </View>
-        <View style={s.inlineFields}>
-          <TextInput style={[s.input, s.flexField]} placeholder={kind === "promotion" ? "Ej. 2 pizzas medianas" : "Nombre del paquete"} value={name} onChangeText={setName}/>
-          <TextInput style={[s.input, s.flexField]} placeholder="Precio total" value={price} onChangeText={setPrice} keyboardType="decimal-pad"/>
-        </View>
-        <LogoPicker value={comboImage} onChange={setComboImage} onError={()=>setMessage("No pudimos cargar la imagen. Revisa el archivo e intenta nuevamente.")} emptyLabel="Seleccionar o arrastrar imagen del paquete" changeLabel="Cambiar imagen del paquete" />
-        <ThemedText style={s.label}>{kind === "promotion" ? "Producto de la promoción" : "Agregar producto al paquete"}</ThemedText>
-        <View style={s.types}>{variants.map((variant: any) => <Pressable key={variant.id} onPress={() => setSelectedVariantId(variant.id)} style={[s.type, selectedVariantId === variant.id && s.typeActive]}><ThemedText>{variant.product.name} · {variant.name}</ThemedText></Pressable>)}</View>
-        <View style={s.inlineFields}>
-          <TextInput style={[s.input, s.flexField]} placeholder="Cantidad" value={quantity} onChangeText={setQuantity} keyboardType="decimal-pad"/>
-          <Pressable disabled={!selectedVariantId || Number(quantity) <= 0} onPress={addItem} style={[s.secondaryButton, (!selectedVariantId || Number(quantity) <= 0) && s.disabled]}><ThemedText style={s.secondaryText}>{kind === "promotion" ? "Asignar promoción" : "Agregar al paquete"}</ThemedText></Pressable>
-        </View>
-        <View style={s.comboSelection}>
-          <ThemedText style={s.label}>Contenido de {kind === "promotion" ? "la promoción" : "el paquete"} · {items.length}</ThemedText>
-          {!items.length && <ThemedText style={s.muted}>Selecciona un producto, indica la cantidad y agrégalo.</ThemedText>}
-          {items.map((item, index) => <View key={`${item.product_variant_id}-${index}`} style={s.recipeRow}><View style={s.rowText}><ThemedText style={s.label}>{item.quantity} × {item.label}</ThemedText><ThemedText style={s.muted}>{item.flavor_required ? "El cliente elegirá el sabor en Caja" : "Sin selección de sabor"}</ThemedText></View><Pressable style={s.inlineTextAction} onPress={() => setItems((current) => current.filter((_row, rowIndex) => rowIndex !== index))}><ThemedText style={s.remove}>Quitar</ThemedText></Pressable></View>)}
-        </View>
-        <Pressable disabled={busy || !name.trim() || !price || !items.length} onPress={save} style={[s.primary, (busy || !name.trim() || !price || !items.length) && s.disabled]}><ThemedText style={s.primaryText}>{busy ? "Guardando..." : kind === "promotion" ? "Crear promoción" : "Crear paquete"}</ThemedText></Pressable>
-        {!!message && <ThemedText style={s.notice}>{message}</ThemedText>}
-      </View>
-      <View style={[s.comboActive, compact && s.comboActiveCompact]}>
-        <View style={s.stepHeading}><ThemedText style={s.productName}>Activos</ThemedText><ThemedText style={s.badge}>{comboRows.length}</ThemedText></View>
-        {!comboRows.length && <ThemedText style={s.muted}>Aún no hay paquetes o promociones.</ThemedText>}
-        <View style={s.comboGrid}>{comboRows.map((combo: any) => <View key={combo.id} style={s.comboCard}>
-          {combo.image_data_uri ? <Image source={{uri: combo.image_data_uri}} style={s.comboThumbnail}/> : <View style={s.comboThumbnailPlaceholder}><ThemedText>🍕</ThemedText></View>}
-          <View style={s.rowText}><ThemedText style={s.productName}>{combo.name}</ThemedText><ThemedText style={s.muted}>${Number(combo.price).toFixed(2)} · {combo.items.length === 1 && Number(combo.items[0].quantity) > 1 ? "Promoción" : "Paquete"}</ThemedText></View>
-          <View style={s.compactActions}><Pressable accessibilityLabel={`${combo.image_data_uri ? "Cambiar" : "Agregar"} imagen de ${combo.name}`} style={s.inlineTextAction} disabled={busy} onPress={() => { setEditingImageId(combo.id); setEditingImage(combo.image_data_uri ?? ""); }}><ThemedText style={s.link}>{combo.image_data_uri ? "Cambiar imagen" : "Agregar imagen"}</ThemedText></Pressable><Pressable accessibilityLabel={`Eliminar ${combo.name}`} style={s.inlineTextAction} disabled={busy} onPress={() => remove(combo)}><ThemedText style={s.remove}>Eliminar</ThemedText></Pressable></View>
-          {editingImageId === combo.id && <View style={s.comboImageEditor}><LogoPicker value={editingImage} onChange={setEditingImage} onError={()=>setMessage("No pudimos cargar la imagen. Revisa el archivo e intenta nuevamente.")} emptyLabel="Seleccionar imagen" changeLabel="Cambiar imagen"/><View style={s.compactActions}><Pressable disabled={busy} onPress={()=>saveImage(combo)} style={s.secondaryButton}><ThemedText style={s.secondaryText}>Guardar imagen</ThemedText></Pressable><Pressable disabled={busy} onPress={()=>{setEditingImageId(null);setEditingImage("");}} style={s.inlineTextAction}><ThemedText style={s.muted}>Cancelar</ThemedText></Pressable></View></View>}
-        </View>)}</View>
-      </View>
-    </View>
-  </View>;
 }
 export function ProductsView({ data, token, onSaved, canConfigure }: { data: any[]; token: string; onSaved: () => void; canConfigure: boolean }) {
   const s=useAppStyles();
   const { mobile, compact } = useResponsiveLayout();
-  const [name, setName] = useState(""); const [description, setDescription] = useState(""); const [productImage, setProductImage] = useState(""); const [type, setType] = useState("pizza"); const [variantName, setVariantName] = useState(""); const [price, setPrice] = useState(""); const [maxFlavors, setMaxFlavors] = useState("1"); const [half, setHalf] = useState(false); const [flavorNames, setFlavorNames] = useState("");
-  const variants = data.flatMap((product) => (product.variants ?? []).map((variant: any) => ({ ...variant, product })));
+  const [search, setSearch] = useState(""); const [status, setStatus] = useState<"active"|"inactive"|"all">("active");
   const [editingProductId, setEditingProductId] = useState<number | null>(null); const [editDraft, rawSetEditDraft] = useState<any>(null); const [message, setMessage, messageKind] = useFeedback(); const [busy, setBusy] = useState(false);
-  const productForm = useFormErrors();
   const editForm = useFormErrors();
   const action = useActionGate();
-  useWorkGuard("product-new", "el producto nuevo", !!(name.trim()||description.trim()||productImage||variantName.trim()||price||flavorNames.trim()), busy || action.busy);
   const [editBaseline,setEditBaseline]=useState("");
   const [configurationRevision, setConfigurationRevision] = useState("");
   const [configurationPending, setConfigurationPending] = useState(false);
@@ -137,9 +40,6 @@ export function ProductsView({ data, token, onSaved, canConfigure }: { data: any
 
   const work=useWork();
   useWorkGuard("product-edit", "el producto en edición", !!editDraft && JSON.stringify(editDraft)!==editBaseline, busy || configurationPending || action.busy);
-  const saveProduct = () => action.run(saveProductImpl);
-  async function saveProductImpl() {
-    if(!productForm.validate({name:required(name,"el nombre del producto"),...variantErrors({name:variantName,price,max_flavors:maxFlavors,allows_half_and_half:half},"variants.0.")}))return; if(configurationAttempt.current || configurationSending.current)return; setBusy(true); setMessage(""); try { await api("/products", token, { method:"POST", body:JSON.stringify({ name:name.trim(), description:description.trim() || null, image_data_uri:productImage || null, type, variants:[{name:variantName.trim(),price:moneyInput(price),max_flavors:decimalInput(maxFlavors),allows_half_and_half:half}], flavors:flavorNames.split(",").map((flavor)=>flavor.trim()).filter(Boolean).map((flavor)=>({name:flavor})) }) }); setName("");setDescription("");setProductImage("");setVariantName("");setPrice("");setFlavorNames("");setMessage("Producto y variante registrados.");try{await onSaved();}catch{setMessage("El producto se guardó. No pudimos actualizar la lista; vuelve a cargarla.","warning");} } catch(error){productForm.fromError(error,{name:"el nombre",description:"la descripción",type:"el tipo de producto",flavors:"los sabores",image_data_uri:"la imagen","variants.0.name":"el tamaño","variants.0.price":"el precio","variants.0.max_flavors":"el número de sabores"});setMessage(operationError(error,"registrar el producto",true),"error");}finally{setBusy(false);} }
   async function editProduct(product: {id: number}) {
     if (configurationAttempt.current || configurationSending.current) return;
     configurationSending.current = true; setBusy(true);
@@ -210,77 +110,47 @@ export function ProductsView({ data, token, onSaved, canConfigure }: { data: any
   }
   const deleteProduct = (product:{id:number;name:string}) => action.run(()=>deleteProductImpl(product));
   async function deleteProductImpl(product:{id:number;name:string}){if(configurationAttempt.current || configurationSending.current)return;if(!(await confirmAction(`${product.name} dejará de aparecer disponible para nuevas ventas.`,{title:"Desactivar producto",acceptLabel:"Desactivar producto",cancelLabel:"Conservar producto"})))return;setBusy(true);setMessage("");try{await api(`/products/${product.id}`,token,{method:"DELETE"});if(editingProductId===product.id){setEditingProductId(null);setEditDraft(null);}setMessage("Producto desactivado.");try{await onSaved();}catch{setMessage("El producto se desactivó. No pudimos actualizar la lista; vuelve a cargarla.","warning");}}catch(error){setMessage(operationError(error,"desactivar el producto",true),"error");}finally{setBusy(false);}}
+  const reactivateProduct = (product:{id:number;name:string}) => action.run(async()=>{setBusy(true);setMessage("");try{await api(`/products/${product.id}`,token,{method:"PATCH",body:JSON.stringify({active:true})});setMessage(`${product.name} está disponible de nuevo en Caja.`);try{await onSaved();}catch{setMessage("El producto se reactivó. No pudimos actualizar la lista; vuelve a cargarla.","warning");}}catch(error){setMessage(operationError(error,"reactivar el producto",true),"error");}finally{setBusy(false);}});
+  const term=search.trim().toLocaleLowerCase();
+  const visible=editingProductId!==null?data.filter((item)=>item.id===editingProductId):data.filter((item)=>(status==="all"||(status==="active")===(item.active!==false))&&(!term||String(item.name).toLocaleLowerCase().includes(term)));
   return (
     <View style={s.productWorkspace}>
-      {canConfigure && <View style={[s.formCard, mobile && s.formCardMobile]}>
-        <ThemedText style={s.sectionTitle}>Crear producto y variante</ThemedText>
-        <ThemedText style={s.formIntro}>Completa la información que verá Caja y configura la primera presentación del producto.</ThemedText>
-        <View style={[s.productCreateLayout, compact && s.productCreateLayoutCompact]}>
-          <View style={s.productCreateMain}>
-            <View style={[s.formStep,s.productFormStep]}>
-              <View style={s.stepHeading}><ThemedText style={s.stepNumber}>1</ThemedText><ThemedText style={s.productName}>Información del producto</ThemedText></View>
-              <TextInput editable={!busy && !action.busy} style={s.input} placeholder="Nombre del producto" required {...productForm.field("name")} value={name} onChangeText={setName}/>
-              <TextInput editable={!busy && !action.busy} style={[s.input,s.multilineInput]} multiline maxLength={500} placeholder="Descripción corta para mostrar en Caja" {...productForm.field("description")} value={description} onChangeText={setDescription}/>
-              <Notice kind="error" message={productForm.errors.type}/>
-              <View style={s.types}>{[["pizza","Pizza"],["wings","Alitas"],["fries","Papas"],["nuggets","Nuggets"],["cone","Cono"],["beverage","Bebida"],["extra","Extra"],["other","Otro"]].map(([key,label])=><Pressable accessibilityRole="radio" aria-checked={type===key} key={key} onPress={()=>setType(key)} style={[s.type,type===key&&s.typeActive]}><ThemedText>{label}</ThemedText></Pressable>)}</View>
-            </View>
-            <View style={[s.formStep,s.productFormStep]}>
-              <View style={s.stepHeading}><ThemedText style={s.stepNumber}>2</ThemedText><ThemedText style={s.productName}>Variante inicial</ThemedText></View>
-              <View style={s.inlineFields}><TextInput editable={!busy && !action.busy} style={[s.input,s.flexField]} placeholder="Variante/tamaño" required {...productForm.field("variants.0.name")} value={variantName} onChangeText={setVariantName}/><TextInput editable={!busy && !action.busy} style={[s.input,s.flexField]} placeholder="Precio" required {...productForm.field("variants.0.price")} helperText="Sin separadores de miles; usa punto o coma decimal." value={price} onChangeText={setPrice} keyboardType="decimal-pad"/><TextInput editable={!busy && !action.busy} style={[s.input,s.flexField]} placeholder="Máx. sabores" required {...productForm.field("variants.0.max_flavors")} value={maxFlavors} onChangeText={setMaxFlavors} keyboardType="number-pad"/></View>
-              <TextInput editable={!busy && !action.busy} style={s.input} placeholder="Sabores separados por coma" {...productForm.field("flavors")} value={flavorNames} onChangeText={setFlavorNames}/>
-              {type==="pizza"&&<Pressable accessibilityRole="checkbox" aria-checked={half} onPress={()=>setHalf((value)=>{const next=!value;if(next&&Number(maxFlavors)<2)setMaxFlavors("2");return next;})} style={[s.type,half&&s.typeActive]}><ThemedText>{half?"Mitad y mitad habilitada":"Habilitar mitad y mitad"}</ThemedText></Pressable>}
-            </View>
-            <ActionButton label="Guardar producto" loading={busy || action.busy} onPress={saveProduct}/>
-          </View>
-          <View style={[s.productCreateAside, compact && s.productCreateAsideCompact]}>
-            <View style={[s.formStep,s.productFormStep]}>
-              <View style={s.stepHeading}><ThemedText style={s.stepNumber}>3</ThemedText><ThemedText style={s.productName}>Imagen del producto</ThemedText></View>
-              <LogoPicker value={productImage} onChange={setProductImage} onError={()=>setMessage("No pudimos cargar la imagen. Revisa el archivo e intenta nuevamente.","error")} emptyLabel="Seleccionar o arrastrar foto del producto" changeLabel="Cambiar foto del producto" />
-              <Notice kind="error" message={productForm.errors.image_data_uri}/>
-              {!!productImage&&<Pressable onPress={()=>setProductImage("")} style={s.secondaryButton}><ThemedText style={s.secondaryText}>Quitar imagen</ThemedText></Pressable>}
-            </View>
-            <View style={s.productPreview}>
-              <View style={s.stepHeading}><ThemedText style={s.previewIcon}>◉</ThemedText><ThemedText style={s.productName}>Así se verá en Caja</ThemedText></View>
-              {productImage?<Image source={{uri:productImage}} resizeMode="cover" style={[s.productPreviewImage,!compact&&s.productPreviewImageCompact]}/>:<View style={s.productPreviewPlaceholder}><ThemedText style={s.previewIcon}>🍕</ThemedText></View>}
-              <View style={s.rowText}><ThemedText style={s.productName}>{name.trim()||"Nombre del producto"}</ThemedText><ThemedText style={s.muted}>{description.trim()||"La descripción aparecerá aquí."}</ThemedText><ThemedText style={s.stock}>{variantName.trim()||"Presentación"} · {price.trim()?`$${price}`:"Precio pendiente"}</ThemedText></View>
-            </View>
-          </View>
-        </View>
-      </View>}
-      {canConfigure&&<ComboManager data={data} token={token}/>}
-      {canConfigure&&<SaleRecipes token={token}/>}
       <Notice kind={messageKind} message={message}/>
+      {editingProductId===null?<View style={s.inlineFields}>
+        <TextInput style={[s.input,s.flexField]} label="Buscar producto" value={search} onChangeText={setSearch}/>
+        {canConfigure&&<View style={s.types}>{([["active","Activos"],["inactive","Desactivados"],["all","Todos"]] as const).map(([key,label])=><Pressable key={key} accessibilityRole="radio" aria-checked={status===key} onPress={()=>setStatus(key)} style={[s.type,status===key&&s.typeActive]}><ThemedText>{label}</ThemedText></Pressable>)}</View>}
+      </View>:<Pressable accessibilityRole="button" disabled={busy} onPress={async()=>{if(await work.leave()){setEditingProductId(null);setEditDraft(null);}}} style={s.inlineTextAction}><ThemedText style={s.editLink}>← Volver al catálogo</ThemedText></Pressable>}
       <FlatList
-      data={data}
+      data={visible}
       keyExtractor={(item) => String(item.id)}
       renderItem={({ item }) => (
         <View style={[s.row, compact && s.catalogRowCompact]}>
           {item.image_data_uri?<Image source={{uri:item.image_data_uri}} resizeMode="cover" style={s.catalogImage}/>:<View style={s.catalogImagePlaceholder}><ThemedText>🍕</ThemedText></View>}
           <View style={s.rowText}>
             <ThemedText style={s.productName}>{item.name}</ThemedText>
-            <ThemedText style={s.muted}>{item.category?.name ?? "Sin categoría"} · {item.type}</ThemedText>
+            <ThemedText style={s.muted}>{productTypeLabel(item.type)}{item.category?.name ? ` · ${item.category.name}` : ""}{item.active===false ? " · Desactivado" : ""}</ThemedText>
+            <ThemedText style={s.muted}>{(item.variants ?? []).map((variant:any)=>`${variant.name} $${Number(variant.price).toFixed(2)}`).join(" · ") || "Sin tamaños"}{item.flavors?.length ? ` · ${item.flavors.length} sabor(es)` : ""}</ThemedText>
             <ThemedText numberOfLines={2} style={s.muted}>{item.description || "Sin descripción corta"}</ThemedText>
-            {canConfigure&&<View style={s.reportActions}><Pressable style={s.inlineTextAction} disabled={busy} onPress={async()=>{if(await work.leave())editProduct(item);}}><ThemedText style={s.editLink}>Editar producto</ThemedText></Pressable><ActionButton variant="destructive" label="Desactivar producto" loading={busy || action.busy} loadingLabel="Procesando…" onPress={()=>deleteProduct(item)}/></View>}
+            {canConfigure&&editingProductId!==item.id&&<View style={s.reportActions}><ActionButton variant="secondary" label="Editar" accessibilityLabel={`Editar producto ${item.name}`} disabled={busy} onPress={async()=>{if(await work.leave())await editProduct(item);}}/>{item.active===false?<ActionButton variant="secondary" label="Reactivar" accessibilityLabel={`Reactivar producto ${item.name}`} disabled={busy || action.busy} onPress={()=>reactivateProduct(item)}/>:<ActionButton variant="destructive" label="Desactivar" accessibilityLabel={`Desactivar producto ${item.name}`} disabled={busy || action.busy} onPress={()=>deleteProduct(item)}/>}</View>}
             {editingProductId===item.id&&editDraft&&<View style={s.inlineEditor}>
               {configurationPending && <ThemedText style={s.notice}>Guardado pendiente de comprobar. Los campos están bloqueados hasta resolver el intento.</ThemedText>}
-              {configurationConflict && <Pressable disabled={busy || configurationPending} onPress={reviewProductConfiguration} style={s.secondaryButton}><ThemedText style={s.secondaryText}>Revisar configuración actual</ThemedText></Pressable>}
+              {configurationConflict && <ActionButton label="Revisar configuración actual" variant="secondary" disabled={busy || configurationPending} onPress={reviewProductConfiguration} />}
               <TextInput editable={!busy && !configurationPending} style={s.input} placeholder="Nombre del producto" required {...editForm.field("product.name")} value={editDraft.name} onChangeText={(value)=>setEditDraft((current:any)=>({...current,name:value}))}/>
               <TextInput editable={!busy && !configurationPending} style={[s.input,s.multilineInput]} multiline maxLength={5000} placeholder="Descripción corta" {...editForm.field("product.description")} value={editDraft.description} onChangeText={(value)=>setEditDraft((current:any)=>({...current,description:value}))}/>
               <LogoPicker value={editDraft.image_data_uri} onChange={(value)=>setEditDraft((current:any)=>({...current,image_data_uri:value}))} onError={()=>setMessage("No pudimos cargar la imagen. Revisa el archivo e intenta nuevamente.","error")} emptyLabel="Seleccionar o arrastrar foto" changeLabel="Cambiar foto" />
               <Notice kind="error" message={editForm.errors["product.image_data_uri"]}/><Notice kind="error" message={editForm.errors["product.type"]}/><Notice kind="error" message={editForm.errors.variants}/><ThemedText style={s.label}>Tipo de producto</ThemedText>
-              <View style={s.types}>{[["pizza","Pizza"],["wings","Alitas"],["fries","Papas"],["nuggets","Nuggets"],["cone","Cono"],["beverage","Bebida"],["extra","Extra"],["other","Otro"]].map(([key,label])=><Pressable key={key} onPress={()=>setEditDraft((current:any)=>({...current,type:key,variants:key==="pizza"?current.variants:current.variants.map((variant:any)=>({...variant,allows_half_and_half:false,allows_stuffed_crust:false}))}))} style={[s.type,editDraft.type===key&&s.typeActive]}><ThemedText>{label}</ThemedText></Pressable>)}</View>
+              <View style={s.types}>{productTypes.map(([key,label])=><Pressable key={key} accessibilityRole="radio" aria-checked={editDraft.type===key} onPress={()=>setEditDraft((current:any)=>({...current,type:key,variants:key==="pizza"?current.variants:current.variants.map((variant:any)=>({...variant,allows_half_and_half:false,allows_stuffed_crust:false}))}))} style={[s.type,editDraft.type===key&&s.typeActive]}><ThemedText>{label}</ThemedText></Pressable>)}</View>
               {!!editDraft.variants.length&&<ThemedText style={s.label}>Variantes / tamaños</ThemedText>}
-              {editDraft.variants.map((variant:any,index:number)=><View key={variant.id} style={s.formStep}><View style={s.stepHeading}><ThemedText style={s.label}>{variant.name||"Variante sin nombre"}</ThemedText><Pressable disabled={busy || configurationPending} onPress={()=>removeEditVariant(variant)} style={s.dangerButton}><ThemedText style={s.dangerText}>Eliminar variante</ThemedText></Pressable></View><TextInput editable={!busy && !configurationPending} style={s.input} placeholder="Variante/tamaño" required {...editForm.field(`variants.${index}.name`)} value={variant.name} onChangeText={(value)=>updateEditVariant(variant.id,{name:value})}/><View style={s.inlineFields}><TextInput editable={!busy && !configurationPending} style={[s.input,s.flexField]} placeholder="Precio" required {...editForm.field(`variants.${index}.price`)} helperText="Sin separadores de miles; usa punto o coma decimal." value={variant.price} onChangeText={(value)=>updateEditVariant(variant.id,{price:value})} keyboardType="decimal-pad"/><TextInput editable={!busy && !configurationPending} style={[s.input,s.flexField]} placeholder="Máx. sabores" required {...editForm.field(`variants.${index}.max_flavors`)} value={variant.max_flavors} onChangeText={(value)=>updateEditVariant(variant.id,{max_flavors:value})} keyboardType="number-pad"/></View>{editDraft.type==="pizza"&&<View style={s.types}><Pressable onPress={()=>updateEditVariant(variant.id,{allows_half_and_half:!variant.allows_half_and_half})} style={[s.type,variant.allows_half_and_half&&s.typeActive]}><ThemedText>{variant.allows_half_and_half?"Mitad y mitad habilitada":"Habilitar mitad y mitad"}</ThemedText></Pressable>{allowsStuffedCrust(variant.name)?<Pressable onPress={()=>updateEditVariant(variant.id,{allows_stuffed_crust:!variant.allows_stuffed_crust})} style={[s.type,variant.allows_stuffed_crust&&s.typeActive]}><ThemedText>{variant.allows_stuffed_crust?"Orilla rellena habilitada (+$20)":"Habilitar orilla rellena (+$20)"}</ThemedText></Pressable>:<ThemedText style={s.muted}>Cuadrada y Napolitana usan únicamente orilla normal.</ThemedText>}</View>}</View>)}
-              <View style={s.stepHeading}><ThemedText style={s.label}>Sabores</ThemedText><Pressable disabled={busy || configurationPending} onPress={addEditFlavor} style={s.secondaryButton}><ThemedText style={s.secondaryText}>+ Agregar sabor</ThemedText></Pressable></View>
+              {editDraft.variants.map((variant:any,index:number)=><View key={variant.id} style={s.formStep}><View style={s.stepHeading}><ThemedText style={s.label}>{variant.name||"Variante sin nombre"}</ThemedText><ActionButton label="Eliminar variante" variant="destructive" disabled={busy || configurationPending} onPress={()=>removeEditVariant(variant)} /></View><TextInput editable={!busy && !configurationPending} style={s.input} placeholder="Variante/tamaño" required {...editForm.field(`variants.${index}.name`)} value={variant.name} onChangeText={(value)=>updateEditVariant(variant.id,{name:value})}/><View style={s.inlineFields}><TextInput editable={!busy && !configurationPending} style={[s.input,s.flexField]} placeholder="Precio" required {...editForm.field(`variants.${index}.price`)} helperText="Sin separadores de miles; usa punto o coma decimal." value={variant.price} onChangeText={(value)=>updateEditVariant(variant.id,{price:value})} keyboardType="decimal-pad"/><TextInput editable={!busy && !configurationPending} style={[s.input,s.flexField]} placeholder="Máx. sabores" required {...editForm.field(`variants.${index}.max_flavors`)} value={variant.max_flavors} onChangeText={(value)=>updateEditVariant(variant.id,{max_flavors:value})} keyboardType="number-pad"/></View>{editDraft.type==="pizza"&&<View style={s.types}><Pressable accessibilityRole="button" aria-pressed={!!(variant.allows_half_and_half)} onPress={()=>updateEditVariant(variant.id,{allows_half_and_half:!variant.allows_half_and_half})} style={[s.type,variant.allows_half_and_half&&s.typeActive]}><ThemedText>{variant.allows_half_and_half?"Mitad y mitad habilitada":"Habilitar mitad y mitad"}</ThemedText></Pressable>{allowsStuffedCrust(variant.name)?<Pressable accessibilityRole="button" aria-pressed={!!(variant.allows_stuffed_crust)} onPress={()=>updateEditVariant(variant.id,{allows_stuffed_crust:!variant.allows_stuffed_crust})} style={[s.type,variant.allows_stuffed_crust&&s.typeActive]}><ThemedText>{variant.allows_stuffed_crust?"Orilla rellena habilitada (+$20)":"Habilitar orilla rellena (+$20)"}</ThemedText></Pressable>:<ThemedText style={s.muted}>Cuadrada y Napolitana usan únicamente orilla normal.</ThemedText>}</View>}</View>)}
+              <View style={s.stepHeading}><ThemedText style={s.label}>Sabores</ThemedText><ActionButton label="+ Agregar sabor" variant="secondary" disabled={busy || configurationPending} onPress={addEditFlavor} /></View>
               {!editDraft.flavors.length&&<ThemedText style={s.muted}>Este producto todavía no tiene sabores.</ThemedText>}
-              {editDraft.flavors.map((flavor:any,index:number)=><View key={flavor.id} style={s.flavorEditRow}><TextInput editable={!busy && !configurationPending} style={[s.input,s.flexField]} placeholder="Nombre del sabor" required {...editForm.field(`flavors.${index}.name`)} value={flavor.name} onChangeText={(value)=>updateEditFlavor(flavor.id,value)}/><Pressable disabled={busy || configurationPending} onPress={()=>removeEditFlavor(flavor)} style={s.dangerButton}><ThemedText style={s.dangerText}>Quitar</ThemedText></Pressable></View>)}
-              <View style={s.reportActions}><ActionButton label="Guardar cambios" loading={busy || action.busy} disabled={configurationConflict} disabledReason="Revisa la configuración actual antes de volver a guardar." onPress={saveProductChanges}/>{!!editDraft.image_data_uri&&<Pressable disabled={busy} onPress={()=>setEditDraft((current:any)=>({...current,image_data_uri:""}))} style={s.secondaryButton}><ThemedText style={s.secondaryText}>Quitar imagen</ThemedText></Pressable>}<Pressable disabled={busy} onPress={async()=>{if(await work.leave()){setEditingProductId(null);setEditDraft(null);}}} style={s.secondaryButton}><ThemedText style={s.secondaryText}>Cancelar</ThemedText></Pressable></View>
+              {editDraft.flavors.map((flavor:any,index:number)=><View key={flavor.id} style={s.flavorEditRow}><TextInput editable={!busy && !configurationPending} style={[s.input,s.flexField]} placeholder="Nombre del sabor" required {...editForm.field(`flavors.${index}.name`)} value={flavor.name} onChangeText={(value)=>updateEditFlavor(flavor.id,value)}/><ActionButton label="Quitar" variant="destructive" disabled={busy || configurationPending} onPress={()=>removeEditFlavor(flavor)} /></View>)}
+              <View style={s.reportActions}><ActionButton label="Guardar cambios" loading={busy || action.busy} disabled={configurationConflict} disabledReason="Revisa la configuración actual antes de volver a guardar." onPress={saveProductChanges}/>{!!editDraft.image_data_uri&&<ActionButton label="Quitar imagen" variant="secondary" disabled={busy} onPress={()=>setEditDraft((current:any)=>({...current,image_data_uri:""}))} />}<ActionButton label="Cancelar" variant="secondary" disabled={busy} onPress={async()=>{if(await work.leave()){setEditingProductId(null);setEditDraft(null);}}} /></View>
             </View>}
           </View>
-          <ThemedText style={s.stock}>{item.variants?.length ?? 0}</ThemedText>
         </View>
       )}
-      ListEmptyComponent={<Empty />}
+      ListEmptyComponent={<Empty text={term ? `No encontramos productos con “${search.trim()}”.` : status==="inactive" ? "No hay productos desactivados." : "Todavía no hay productos. Créalos en “Nuevo producto”."} />}
       />
     </View>
   );

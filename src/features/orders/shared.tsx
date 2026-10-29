@@ -11,8 +11,8 @@ export async function openPhoneDialer(phone?: string | null): Promise<void> {
   if (!normalized) return;
   await Linking.openURL(`tel:${normalized}`);
 }
-export function Empty() {
-  const s=useAppStyles(); return <ThemedText style={s.muted}>Sin registros.</ThemedText>; }
+export function Empty({ text = "Sin registros." }: { text?: string }) {
+  const s=useAppStyles(); return <ThemedText style={s.muted}>{text}</ThemedText>; }
 export const ORDER_TYPE_LABELS: Record<OrderType, string> = {
   pickup: "Recoger",
   whatsapp: "WhatsApp",

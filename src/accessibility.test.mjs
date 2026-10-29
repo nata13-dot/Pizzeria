@@ -3,8 +3,8 @@ import test from "node:test";
 import { readdir, readFile } from "node:fs/promises";
 
 const root = new URL("./", import.meta.url);
-// POS and Products still have unlabeled controls; remove them from this list when their priority is done.
-const pending = ["features/pos/", "features/products/"];
+// POS still has unlabeled controls; remove them from this list when their priority is done.
+const pending = ["features/pos/"];
 
 async function sources(dir = "") {
   const entries = await readdir(new URL(dir, root), { withFileTypes: true });
