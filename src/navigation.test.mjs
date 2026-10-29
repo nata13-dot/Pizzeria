@@ -3,7 +3,7 @@ import test,{afterEach} from 'node:test';
 import React,{useState} from 'react';
 import {JSDOM} from 'jsdom';
 import {loadUi} from './testSupport/loadUi.mjs';
-import {appModules,groupedModules,mobileModules,modulesForUser,firstAllowed} from './navigation/modules.ts';
+import {appModules,groupedModules,mobileModules,modulesForUser,firstAllowed,homeScreen} from './navigation/modules.ts';
 import {requestModuleNavigation,takeBackTarget} from './navigation/controller.ts';
 const dom=new JSDOM('<!doctype html><html><body></body></html>',{url:'http://localhost'});globalThis.window=dom.window;globalThis.document=dom.window.document;globalThis.sessionStorage=dom.window.sessionStorage;globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 Object.defineProperty(globalThis,'navigator',{value:{userAgent:'test'},configurable:true});
@@ -13,13 +13,13 @@ const {clearNavigationScope,readLastModule,readQueryContext,writeLastModule,writ
 afterEach(cleanup);
 const user=(slug,permissions=[])=>({role:{slug},permissions});
 
-test('registry contains the fourteen modules once and groups never include empty sections',()=>{
- assert.equal(appModules.length,14);assert.equal(new Set(appModules.map(item=>item.id)).size,14);
+test('registry contains the fifteen modules once and groups never include empty sections',()=>{
+ assert.equal(appModules.length,15);assert.equal(new Set(appModules.map(item=>item.id)).size,15);
  const groups=groupedModules(modulesForUser(user('cocina',['orders.view','kitchen.use','documents.generate'])));
  assert.deepEqual(groups.map(group=>group.label),['Operación','Administración']);assert.deepEqual(groups.flatMap(group=>group.modules.map(item=>item.id)),['kitchen','settings']);
 });
 test('administrator, cashier, kitchen and delivery visibility preserves existing permissions',()=>{
- assert.equal(modulesForUser(user('administrador',['*'])).length,14);
+ assert.equal(modulesForUser(user('administrador',['*'])).length,15);
  assert.deepEqual(modulesForUser(user('cajero',['pos.use','orders.view','inventory.view','customers.manage','cash.manage','documents.generate'])).map(item=>item.id),['dashboard','pos','orders','cash','customers','inventory','settings']);
  assert.deepEqual(modulesForUser(user('cocina',['orders.view','kitchen.use'])).map(item=>item.id),['kitchen','settings']);
  assert.deepEqual(modulesForUser(user('repartidor',['orders.view','delivery.use'])).map(item=>item.id),['delivery','settings']);
@@ -62,4 +62,13 @@ test('approved navigation persists only the destination and closes temporary sur
  let persisted=null,closed=0,committed=0;const history=[];
  assert.equal(await requestModuleNavigation({target:'inventory',allowed:['pos','inventory'],current:'pos',history,leave:async()=>true,commit:target=>{committed++;assert.equal(target,'inventory');},close:()=>closed++,persist:target=>persisted=target}),true);
  assert.equal(committed,1);assert.equal(closed,1);assert.equal(persisted,'inventory');assert.deepEqual(history,['pos']);
+});
+
+test('each role starts its shift on the screen it uses most',async()=>{
+
+ assert.equal(homeScreen(user('administrador',['*'])),'dashboard');
+ assert.equal(homeScreen(user('cajero',['pos.use','orders.view','inventory.view','customers.manage','cash.manage'])),'pos');
+ assert.equal(homeScreen(user('cocina',['orders.view','kitchen.use'])),'kitchen');
+ assert.equal(homeScreen(user('repartidor',['orders.view','delivery.use'])),'delivery');
+ assert.equal(homeScreen(user('otro',[])),'settings');
 });

@@ -12,6 +12,7 @@ import { OperationalOrdersScreen } from "../features/orders/OperationalOrdersScr
 import { OrdersDayScreen } from "../features/orders/OrdersDayScreen";
 import { ProductsScreen } from "../features/products/ProductsScreen";
 import { ReportsScreen } from "../features/reports/ReportsScreen";
+import { RecipesScreen } from "../features/recipes/RecipesScreen";
 import { screenComposition } from "./screenComposition";
 
 export function ScreenContent({screen,token,branchId,userId,isAdministrator,canOverrideStock,onNavigate}:{screen:Screen;token:string;branchId:number;userId:number;isAdministrator:boolean;canOverrideStock:boolean;onNavigate:(screen:Screen)=>void}){
@@ -28,6 +29,7 @@ export function ScreenContent({screen,token,branchId,userId,isAdministrator,canO
   if(component==="production")return <ProductionScreen token={token} isAdministrator={isAdministrator}/>;
   if(component==="products")return <ProductsScreen token={token} isAdministrator={isAdministrator}/>;
   if(component==="reports")return <ReportsScreen token={token}/>;
+  if(component==="recipes")return <RecipesScreen token={token} isAdministrator={isAdministrator}/>;
   if(component==="operational"&&(screen==="kitchen"||screen==="delivery"))return <OperationalOrdersScreen mode={screen} token={token} branchId={branchId}/>;
   return null;
 }

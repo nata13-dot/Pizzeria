@@ -1,6 +1,6 @@
 import type { IconTone } from "../components/IconBadge";
 
-export type Screen = "dashboard" | "pos" | "cash" | "orders" | "inventory" | "purchases" | "production" | "products" | "kitchen" | "delivery" | "customers" | "users" | "reports" | "settings";
+export type Screen = "dashboard" | "pos" | "cash" | "orders" | "inventory" | "purchases" | "production" | "products" | "recipes" | "kitchen" | "delivery" | "customers" | "users" | "reports" | "settings";
 export type ModuleGroupId = "home" | "sales" | "operations" | "catalog" | "analysis" | "administration";
 export type NavigationUser = { role: { slug: string }; permissions?: string[] };
 
@@ -25,6 +25,7 @@ export const appModules: AppModule[] = [
   { id: "purchases", label: "Compras", group: "operations", icon: "↓", tone: "warning", access: user => admin(user) || has(user,"inventory.view") && has(user,"purchases.manage") },
   { id: "production", label: "Producción", group: "operations", icon: "P", tone: "danger", access: user => admin(user) || has(user,"inventory.view") && has(user,"production.manage") },
   { id: "products", label: "Productos", group: "catalog", icon: "◫", tone: "primary", access: admin },
+  { id: "recipes", label: "Recetas", group: "catalog", icon: "R", tone: "success", access: admin },
   { id: "reports", label: "Reportes", group: "analysis", icon: "↗", tone: "info", access: admin },
   { id: "users", label: "Usuarios y permisos", group: "administration", icon: "U", tone: "success", access: admin },
   { id: "settings", label: "Ajustes", group: "administration", icon: "⚙", tone: "neutral", access: () => true },
@@ -41,4 +42,14 @@ export function mobileModules(user: NavigationUser, allowed: AppModule[]): AppMo
   return [...ids.map(id=>allowed.find(module=>module.id===id)).filter((module): module is AppModule=>Boolean(module)),...allowed].filter((module,index,list)=>list.findIndex(item=>item.id===module.id)===index).slice(0,4);
 }
 export function firstAllowed(user: NavigationUser): Screen { return modulesForUser(user)[0]?.id ?? "settings"; }
+/** Where each role starts its shift: the screen it uses most, not the first one in the menu. */
+export function homeScreen(user: NavigationUser): Screen {
+  const allowed = modulesForUser(user).map((module) => module.id);
+  const preferred: Screen[] = admin(user) ? ["dashboard"]
+    : has(user, "pos.use") ? ["pos"]
+    : has(user, "kitchen.use") ? ["kitchen"]
+    : has(user, "delivery.use") ? ["delivery"]
+    : [];
+  return preferred.find((screen) => allowed.includes(screen)) ?? firstAllowed(user);
+}
 export function isScreen(value: unknown): value is Screen { return typeof value === "string" && moduleById.has(value as Screen); }

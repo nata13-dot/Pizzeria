@@ -11,7 +11,7 @@ import { ordersChannel } from "../realtime";
 import { ThemeToggle, useTheme } from "../theme/ThemeProvider";
 import { useWork } from "../work/WorkProvider";
 import { useNavigationSound } from "../sounds";
-import { appModules, firstAllowed, groupedModules, mobileModules, modulesForUser, type Screen } from "../navigation/modules";
+import { appModules, homeScreen, groupedModules, mobileModules, modulesForUser, type Screen } from "../navigation/modules";
 import { NavigationScopeProvider } from "../navigation/NavigationContext";
 import { clearNavigationScope, readLastModule, writeLastModule, type NavigationScope } from "../navigation/sessionState";
 import { ModuleSheet } from "../navigation/ModuleSheet";
@@ -20,6 +20,8 @@ import { requestModuleNavigation, takeBackTarget } from "../navigation/controlle
 import { useAppStyles } from "../styles/appStyles";
 import { ScreenMotion } from "../motion/Motion";
 import { IconBadge } from "../components/IconBadge";
+import { NavBadge } from "../components/NavBadge";
+import { badgeLabel, useNavigationBadges } from "../navigation/useNavigationBadges";
 import {Login,type LoginSession as Session} from "./Login";
 const labels=Object.fromEntries(appModules.map(module=>[module.id,module.label])) as Record<Screen,string>;
 const brandLogo=require("../../assets/brand-mark.png");
@@ -58,7 +60,12 @@ export function PizzeriaApp() {
   const mobileMenuOpenRef = useRef(false);
   const moreTriggerRef=useRef<any>(null);
   const { width } = useWindowDimensions();
-  const compact = width < 1024;
+  const mobile = width < 600;
+  // Tablets keep every module one tap away in a narrow icon rail instead of the phone bar.
+  const rail = !mobile && width < 1024;
+  const compact = mobile;
+  const [badgeSignal, setBadgeSignal] = useState(0);
+  const badges = useNavigationBadges(session?.token ?? null, `${screen}:${badgeSignal}`);
   useEffect(() => {
     let active = true;
     readSession<Session>().then(async (stored) => {
@@ -72,7 +79,7 @@ export function PizzeriaApp() {
         const restored = { token: stored.token, user };
         const scope={api:API_URL,user:user.id,branch:user.branch_id};
         const allowed=screensForUser(user);const remembered=readLastModule(scope);
-        const initial=allowed.includes(remembered as Screen)?remembered as Screen:firstAllowed(user);
+        const initial=allowed.includes(remembered as Screen)?remembered as Screen:homeScreen(user);
         setSession(restored);
         screenRef.current=initial;setScreen(initial);
         await saveSession(restored);
@@ -117,6 +124,7 @@ export function PizzeriaApp() {
   useEffect(() => {
     if (!session) return;
     return ordersChannel(session.token, session.user.branch_id, (event) => {
+      setBadgeSignal((value) => value + 1);
       const notification = orderNotificationFor(session.user, event);
       if (notification && Platform.OS === "web" && !Capacitor.isNativePlatform()) {
         showOrderNotification(notification.title, notification.body, {
@@ -134,7 +142,7 @@ export function PizzeriaApp() {
     return () => clearTimeout(timer);
   }, [session?.expires_at]);
   if (restoringSession) return <SafeAreaView style={s.loginPage}><ActivityIndicator size="large" color={theme.colors.primary} /><ThemedText style={s.muted}>Restaurando sesión...</ThemedText></SafeAreaView>;
-  if (!session) return <Login onLogin={(next, remember)=>{const scope={api:API_URL,user:next.user.id,branch:next.user.branch_id};const allowed=screensForUser(next.user);const stored=readLastModule(scope);const initial=allowed.includes(stored as Screen)?stored as Screen:firstAllowed(next.user);screenHistory.current=[];screenRef.current=initial;setSession(next);setScreen(initial);if(remember)saveSession(next).catch(()=>{});else clearSession().catch(()=>{})}} />;
+  if (!session) return <Login onLogin={(next, remember)=>{const scope={api:API_URL,user:next.user.id,branch:next.user.branch_id};const allowed=screensForUser(next.user);const stored=readLastModule(scope);const initial=allowed.includes(stored as Screen)?stored as Screen:homeScreen(next.user);screenHistory.current=[];screenRef.current=initial;setSession(next);setScreen(initial);if(remember)saveSession(next).catch(()=>{});else clearSession().catch(()=>{})}} />;
   if (!work.ready || work.scope?.user!==session.user.id || work.scope?.branch!==session.user.branch_id) return <SafeAreaView style={s.loginPage}><ThemedText>{work.notice || "Recuperando tu trabajo..."}</ThemedText>{!!work.notice && <Pressable accessibilityRole="button" onPress={() => void work.open({api: API_URL,user:session.user.id,branch:session.user.branch_id})}><ThemedText>Reintentar</ThemedText></Pressable>}</SafeAreaView>;
   const visibleModules=modulesForUser(session.user);
   const visibleScreens = visibleModules.map(module=>module.id);
@@ -153,30 +161,31 @@ export function PizzeriaApp() {
   return (
     <NavigationScopeProvider scope={navigationScope}><SafeAreaView style={s.page}>
       <View style={[s.layout, compact && s.layoutCompact]}>
-        {!compact && <View style={s.nav}>
-          <View style={s.brandBlock}><View style={s.brandMark}><Image accessibilityLabel="El Espinazo del Diablo" resizeMode="contain" source={brandLogo} style={s.brandLogo}/></View><View style={s.brandCopy}><ThemedText numberOfLines={1} style={s.brand}>El Espinazo</ThemedText><ThemedText numberOfLines={1} style={s.brandCaption}>Pizzas y Alitas</ThemedText></View></View>
+        {!compact && <View style={[s.nav, rail && s.navRail]}>
+          <View style={s.brandBlock}><View style={s.brandMark}><Image accessibilityLabel="El Espinazo del Diablo" resizeMode="contain" source={brandLogo} style={s.brandLogo}/></View>{!rail && <View style={s.brandCopy}><ThemedText numberOfLines={1} style={s.brand}>El Espinazo</ThemedText><ThemedText numberOfLines={1} style={s.brandCaption}>Pizzas y Alitas</ThemedText></View>}</View>
           <ScrollView
             showsHorizontalScrollIndicator={false}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={s.navList}
           >
-          {navigationGroups.map(group=><View key={group.id} style={s.navGroup}><ThemedText style={s.navGroupLabel}>{group.label}</ThemedText>{group.modules.map(module => (
+          {navigationGroups.map(group=><View key={group.id} style={s.navGroup}>{!rail && <ThemedText style={s.navGroupLabel}>{group.label}</ThemedText>}{group.modules.map(module => (
             <Pressable key={module.id}
               accessibilityRole="link"
               aria-current={(currentScreen===module.id) ? "page" : undefined}
-              accessibilityLabel={`${module.label}${currentScreen===module.id?", módulo actual":""}`}
+              accessibilityLabel={`${module.label}${currentScreen===module.id?", módulo actual":""}${badgeLabel(badges[module.id])}`}
               onPress={() => requestNavigation(module.id)}
-              style={[s.navItem, currentScreen === module.id && s.navActive]}
+              style={[s.navItem, rail && s.navItemRail, currentScreen === module.id && s.navActive]}
             >
               <IconBadge glyph={module.icon} tone={module.tone} size="small" selected={currentScreen === module.id}/>
-              <ThemedText style={currentScreen === module.id ? s.navActiveText : s.navText}>
+              <ThemedText numberOfLines={rail ? 2 : 1} style={[currentScreen === module.id ? s.navActiveText : s.navText, rail && s.navTextRail]}>
                 {module.label}
               </ThemedText>
+              <NavBadge count={badges[module.id]} style={rail ? s.navBadgeRail : s.navBadgeEnd}/>
             </Pressable>
           ))}</View>)}
           </ScrollView>
-          <View style={s.userCard}><View style={s.avatar}><ThemedText style={s.avatarText}>{session.user.name.slice(0, 1).toUpperCase()}</ThemedText></View><View style={s.userInfo}><ThemedText numberOfLines={1} style={s.userName}>{session.user.name}</ThemedText><ThemedText numberOfLines={1} style={s.userRole}>{session.user.role.name}</ThemedText></View><ThemeToggle /></View>
-          <ActionButton label="Cerrar sesión" variant="secondary" onPress={logout} />
+          <View style={s.userCard}><View style={s.avatar}><ThemedText style={s.avatarText}>{session.user.name.slice(0, 1).toUpperCase()}</ThemedText></View>{!rail && <View style={s.userInfo}><ThemedText numberOfLines={1} style={s.userName}>{session.user.name}</ThemedText><ThemedText numberOfLines={1} style={s.userRole}>{session.user.role.name}</ThemedText></View>}<ThemeToggle /></View>
+          <ActionButton label={rail ? "Salir" : "Cerrar sesión"} accessibilityLabel="Cerrar sesión" variant="secondary" onPress={logout} />
         </View>}
         {compact && <View style={s.mobileHeader}><View style={s.mobileBrand}><View style={s.mobileBrandMark}><Image accessibilityLabel="El Espinazo del Diablo" resizeMode="contain" source={brandLogo} style={s.mobileBrandLogo}/></View><View style={s.mobileBrandCopy}><ThemedText numberOfLines={1} style={s.mobileBrandName}>El Espinazo</ThemedText><ThemedText numberOfLines={1} style={s.mobileRole}>Pizzas y Alitas · {session.user.role.name}</ThemedText></View></View><View style={s.headerActions}><ThemeToggle /><ActionButton label={session.user.name.slice(0, 1).toUpperCase()} variant="secondary" accessibilityLabel="Abrir todos los módulos" onPress={() => setMobileMenuOpen(true)} /></View></View>}
         <ScrollView style={s.content} contentContainerStyle={[s.contentBody, compact && s.contentBodyCompact]}>
@@ -193,8 +202,8 @@ export function PizzeriaApp() {
           </ScreenMotion>
         </ScrollView>
       </View>
-      {compact && <View accessibilityRole="tablist" accessibilityLabel="Módulos principales" style={s.bottomNav}>{quickModules.map((module) => {const active=currentScreen===module.id;return <View key={module.id} style={s.bottomMotionItem}><Pressable accessibilityRole="tab" aria-selected={active} accessibilityLabel={`${module.label}${active?", módulo actual":""}`} onPress={() => requestNavigation(module.id)} style={[s.bottomNavItem,active&&s.bottomNavItemActive]}><IconBadge glyph={module.icon} tone={module.tone} size="small" selected={active}/><ThemedText numberOfLines={1} style={[s.bottomLabel,active&&s.bottomTextActive]}>{module.label}</ThemedText></Pressable></View>})}<View style={s.bottomMotionItem}><Pressable ref={moreTriggerRef} accessibilityRole="button" accessibilityLabel="Abrir más módulos" aria-expanded={mobileMenuOpen} aria-current={(!quickScreens.includes(currentScreen)) ? "page" : undefined} onPress={() => setMobileMenuOpen(true)} style={[s.bottomNavItem,!quickScreens.includes(currentScreen)&&s.bottomNavItemActive]}><IconBadge glyph="•••" tone="neutral" size="small" selected={!quickScreens.includes(currentScreen)}/><ThemedText style={[s.bottomLabel,!quickScreens.includes(currentScreen)&&s.bottomTextActive]}>Más</ThemedText></Pressable></View></View>}
-      <ModuleSheet open={compact&&mobileMenuOpen} groups={navigationGroups} current={currentScreen} userName={session.user.name} roleName={session.user.role.name} onNavigate={requestNavigation} onLogout={logout} onClose={()=>setMobileMenuOpen(false)}/>
+      {compact && <View accessibilityRole="tablist" accessibilityLabel="Módulos principales" style={s.bottomNav}>{quickModules.map((module) => {const active=currentScreen===module.id;return <View key={module.id} style={s.bottomMotionItem}><Pressable accessibilityRole="tab" aria-selected={active} accessibilityLabel={`${module.label}${active?", módulo actual":""}${badgeLabel(badges[module.id])}`} onPress={() => requestNavigation(module.id)} style={[s.bottomNavItem,active&&s.bottomNavItemActive]}><IconBadge glyph={module.icon} tone={module.tone} size="small" selected={active}/><NavBadge count={badges[module.id]} style={s.navBadgeRail}/><ThemedText numberOfLines={1} style={[s.bottomLabel,active&&s.bottomTextActive]}>{module.label}</ThemedText></Pressable></View>})}<View style={s.bottomMotionItem}><Pressable ref={moreTriggerRef} accessibilityRole="button" accessibilityLabel="Abrir más módulos" aria-expanded={mobileMenuOpen} aria-current={(!quickScreens.includes(currentScreen)) ? "page" : undefined} onPress={() => setMobileMenuOpen(true)} style={[s.bottomNavItem,!quickScreens.includes(currentScreen)&&s.bottomNavItemActive]}><IconBadge glyph="•••" tone="neutral" size="small" selected={!quickScreens.includes(currentScreen)}/><ThemedText style={[s.bottomLabel,!quickScreens.includes(currentScreen)&&s.bottomTextActive]}>Más</ThemedText></Pressable></View></View>}
+      <ModuleSheet open={compact&&mobileMenuOpen} badges={badges} groups={navigationGroups} current={currentScreen} userName={session.user.name} roleName={session.user.role.name} onNavigate={requestNavigation} onLogout={logout} onClose={()=>setMobileMenuOpen(false)}/>
     </SafeAreaView></NavigationScopeProvider>
   );
 }
