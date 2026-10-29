@@ -68,7 +68,7 @@ export function Login({onLogin}:{onLogin:(session:LoginSession,remember:boolean)
               <TextInput nativeID="login-password" inputRef={passwordInput} accessibilityLabel="Contraseña" placeholder="Contraseña" style={s.loginInput} value={password} onChangeText={setPassword} secureTextEntry={!showPassword} autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" importantForAutofill="yes" returnKeyType="done" onSubmitEditing={()=>void go()}/>
             </View>
             <View style={s.loginOptions}>
-              <Pressable accessibilityRole="checkbox" accessibilityState={{checked:remember}} onPress={()=>setRemember(value=>!value)} style={s.loginRemember}><View style={[s.loginCheckbox,remember&&s.loginCheckboxActive]}>{remember&&<ThemedText style={s.loginCheck}>✓</ThemedText>}</View><ThemedText style={s.loginOptionText}>Recordar sesión</ThemedText></Pressable>
+              <Pressable accessibilityRole="checkbox" aria-checked={remember} onPress={()=>setRemember(value=>!value)} style={s.loginRemember}><View style={[s.loginCheckbox,remember&&s.loginCheckboxActive]}>{remember&&<ThemedText style={s.loginCheck}>✓</ThemedText>}</View><ThemedText style={s.loginOptionText}>Recordar sesión</ThemedText></Pressable>
               <Pressable accessibilityRole="button" accessibilityLabel={showPassword?"Ocultar contraseña":"Mostrar contraseña"} onPress={()=>setShowPassword(value=>!value)} style={s.loginPasswordToggle}><ThemedText style={s.loginPasswordToggleText}>{showPassword?"Ocultar":"Mostrar"}</ThemedText></Pressable>
             </View>
             {!!error&&<View style={s.loginError}><ThemedText accessibilityRole="alert" style={s.loginErrorText}>{error}</ThemedText></View>}

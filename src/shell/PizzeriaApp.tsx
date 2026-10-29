@@ -1,3 +1,4 @@
+import { ActionButton } from "../components/ActionButton";
 import {ThemedText} from "../theme/ThemedText";
 import { App as CapacitorApp } from "@capacitor/app";
 import { Capacitor } from "@capacitor/core";
@@ -17,7 +18,7 @@ import { ModuleSheet } from "../navigation/ModuleSheet";
 import { ScreenContent } from "../navigation/ScreenContent";
 import { requestModuleNavigation, takeBackTarget } from "../navigation/controller";
 import { useAppStyles } from "../styles/appStyles";
-import { PressMotion, ScreenMotion } from "../motion/Motion";
+import { ScreenMotion } from "../motion/Motion";
 import { IconBadge } from "../components/IconBadge";
 import {Login,type LoginSession as Session} from "./Login";
 const labels=Object.fromEntries(appModules.map(module=>[module.id,module.label])) as Record<Screen,string>;
@@ -134,7 +135,7 @@ export function PizzeriaApp() {
   }, [session?.expires_at]);
   if (restoringSession) return <SafeAreaView style={s.loginPage}><ActivityIndicator size="large" color={theme.colors.primary} /><ThemedText style={s.muted}>Restaurando sesión...</ThemedText></SafeAreaView>;
   if (!session) return <Login onLogin={(next, remember)=>{const scope={api:API_URL,user:next.user.id,branch:next.user.branch_id};const allowed=screensForUser(next.user);const stored=readLastModule(scope);const initial=allowed.includes(stored as Screen)?stored as Screen:firstAllowed(next.user);screenHistory.current=[];screenRef.current=initial;setSession(next);setScreen(initial);if(remember)saveSession(next).catch(()=>{});else clearSession().catch(()=>{})}} />;
-  if (!work.ready || work.scope?.user!==session.user.id || work.scope?.branch!==session.user.branch_id) return <SafeAreaView style={s.loginPage}><ThemedText>{work.notice || "Recuperando tu trabajo..."}</ThemedText>{!!work.notice && <Pressable onPress={() => void work.open({api: API_URL,user:session.user.id,branch:session.user.branch_id})}><ThemedText>Reintentar</ThemedText></Pressable>}</SafeAreaView>;
+  if (!work.ready || work.scope?.user!==session.user.id || work.scope?.branch!==session.user.branch_id) return <SafeAreaView style={s.loginPage}><ThemedText>{work.notice || "Recuperando tu trabajo..."}</ThemedText>{!!work.notice && <Pressable accessibilityRole="button" onPress={() => void work.open({api: API_URL,user:session.user.id,branch:session.user.branch_id})}><ThemedText>Reintentar</ThemedText></Pressable>}</SafeAreaView>;
   const visibleModules=modulesForUser(session.user);
   const visibleScreens = visibleModules.map(module=>module.id);
   allowedRef.current=visibleScreens;
@@ -160,9 +161,9 @@ export function PizzeriaApp() {
             contentContainerStyle={s.navList}
           >
           {navigationGroups.map(group=><View key={group.id} style={s.navGroup}><ThemedText style={s.navGroupLabel}>{group.label}</ThemedText>{group.modules.map(module => (
-            <PressMotion key={module.id} active={currentScreen===module.id}><Pressable
+            <Pressable key={module.id}
               accessibilityRole="link"
-              accessibilityState={{selected:currentScreen===module.id}}
+              aria-current={(currentScreen===module.id) ? "page" : undefined}
               accessibilityLabel={`${module.label}${currentScreen===module.id?", módulo actual":""}`}
               onPress={() => requestNavigation(module.id)}
               style={[s.navItem, currentScreen === module.id && s.navActive]}
@@ -171,15 +172,13 @@ export function PizzeriaApp() {
               <ThemedText style={currentScreen === module.id ? s.navActiveText : s.navText}>
                 {module.label}
               </ThemedText>
-            </Pressable></PressMotion>
+            </Pressable>
           ))}</View>)}
           </ScrollView>
           <View style={s.userCard}><View style={s.avatar}><ThemedText style={s.avatarText}>{session.user.name.slice(0, 1).toUpperCase()}</ThemedText></View><View style={s.userInfo}><ThemedText numberOfLines={1} style={s.userName}>{session.user.name}</ThemedText><ThemedText numberOfLines={1} style={s.userRole}>{session.user.role.name}</ThemedText></View><ThemeToggle /></View>
-          <Pressable onPress={logout} style={s.logout}>
-            <ThemedText style={s.logoutText}>Cerrar sesión</ThemedText>
-          </Pressable>
+          <ActionButton label="Cerrar sesión" variant="secondary" onPress={logout} />
         </View>}
-        {compact && <View style={s.mobileHeader}><View style={s.mobileBrand}><View style={s.mobileBrandMark}><Image accessibilityLabel="El Espinazo del Diablo" resizeMode="contain" source={brandLogo} style={s.mobileBrandLogo}/></View><View style={s.mobileBrandCopy}><ThemedText numberOfLines={1} style={s.mobileBrandName}>El Espinazo</ThemedText><ThemedText numberOfLines={1} style={s.mobileRole}>Pizzas y Alitas · {session.user.role.name}</ThemedText></View></View><View style={s.headerActions}><ThemeToggle /><Pressable accessibilityLabel="Abrir todos los módulos" onPress={() => setMobileMenuOpen(true)} style={s.mobileAvatar}><ThemedText style={s.avatarText}>{session.user.name.slice(0, 1).toUpperCase()}</ThemedText></Pressable></View></View>}
+        {compact && <View style={s.mobileHeader}><View style={s.mobileBrand}><View style={s.mobileBrandMark}><Image accessibilityLabel="El Espinazo del Diablo" resizeMode="contain" source={brandLogo} style={s.mobileBrandLogo}/></View><View style={s.mobileBrandCopy}><ThemedText numberOfLines={1} style={s.mobileBrandName}>El Espinazo</ThemedText><ThemedText numberOfLines={1} style={s.mobileRole}>Pizzas y Alitas · {session.user.role.name}</ThemedText></View></View><View style={s.headerActions}><ThemeToggle /><ActionButton label={session.user.name.slice(0, 1).toUpperCase()} variant="secondary" accessibilityLabel="Abrir todos los módulos" onPress={() => setMobileMenuOpen(true)} /></View></View>}
         <ScrollView style={s.content} contentContainerStyle={[s.contentBody, compact && s.contentBodyCompact]}>
           <ScreenMotion route={currentScreen} style={s.screenMotion}>
           <View style={s.pageHeading}><View><ThemedText style={s.eyebrow}>{session.user.role.name.toUpperCase()}</ThemedText>
@@ -194,7 +193,7 @@ export function PizzeriaApp() {
           </ScreenMotion>
         </ScrollView>
       </View>
-      {compact && <View accessibilityRole="tablist" accessibilityLabel="Módulos principales" style={s.bottomNav}>{quickModules.map((module) => {const active=currentScreen===module.id;return <PressMotion key={module.id} active={active} style={s.bottomMotionItem}><Pressable accessibilityRole="tab" accessibilityState={{selected:active}} accessibilityLabel={`${module.label}${active?", módulo actual":""}`} onPress={() => requestNavigation(module.id)} style={[s.bottomNavItem,active&&s.bottomNavItemActive]}><IconBadge glyph={module.icon} tone={module.tone} size="small" selected={active}/><ThemedText numberOfLines={1} style={[s.bottomLabel,active&&s.bottomTextActive]}>{module.label}</ThemedText></Pressable></PressMotion>})}<PressMotion active={!quickScreens.includes(currentScreen)} style={s.bottomMotionItem}><Pressable ref={moreTriggerRef} accessibilityRole="button" accessibilityLabel="Abrir más módulos" accessibilityState={{expanded:mobileMenuOpen,selected:!quickScreens.includes(currentScreen)}} onPress={() => setMobileMenuOpen(true)} style={[s.bottomNavItem,!quickScreens.includes(currentScreen)&&s.bottomNavItemActive]}><IconBadge glyph="•••" tone="neutral" size="small" selected={!quickScreens.includes(currentScreen)}/><ThemedText style={[s.bottomLabel,!quickScreens.includes(currentScreen)&&s.bottomTextActive]}>Más</ThemedText></Pressable></PressMotion></View>}
+      {compact && <View accessibilityRole="tablist" accessibilityLabel="Módulos principales" style={s.bottomNav}>{quickModules.map((module) => {const active=currentScreen===module.id;return <View key={module.id} style={s.bottomMotionItem}><Pressable accessibilityRole="tab" aria-selected={active} accessibilityLabel={`${module.label}${active?", módulo actual":""}`} onPress={() => requestNavigation(module.id)} style={[s.bottomNavItem,active&&s.bottomNavItemActive]}><IconBadge glyph={module.icon} tone={module.tone} size="small" selected={active}/><ThemedText numberOfLines={1} style={[s.bottomLabel,active&&s.bottomTextActive]}>{module.label}</ThemedText></Pressable></View>})}<View style={s.bottomMotionItem}><Pressable ref={moreTriggerRef} accessibilityRole="button" accessibilityLabel="Abrir más módulos" aria-expanded={mobileMenuOpen} aria-current={(!quickScreens.includes(currentScreen)) ? "page" : undefined} onPress={() => setMobileMenuOpen(true)} style={[s.bottomNavItem,!quickScreens.includes(currentScreen)&&s.bottomNavItemActive]}><IconBadge glyph="•••" tone="neutral" size="small" selected={!quickScreens.includes(currentScreen)}/><ThemedText style={[s.bottomLabel,!quickScreens.includes(currentScreen)&&s.bottomTextActive]}>Más</ThemedText></Pressable></View></View>}
       <ModuleSheet open={compact&&mobileMenuOpen} groups={navigationGroups} current={currentScreen} userName={session.user.name} roleName={session.user.role.name} onNavigate={requestNavigation} onLogout={logout} onClose={()=>setMobileMenuOpen(false)}/>
     </SafeAreaView></NavigationScopeProvider>
   );
@@ -208,4 +207,4 @@ export class AppErrorBoundary extends Component<{ children: ReactNode }, { error
     return <AppErrorFallback onRetry={() => this.setState({ error: null })}/>;
   }
 }
-function AppErrorFallback({onRetry}:{onRetry:()=>void}){const s=useAppStyles();return <SafeAreaView style={s.loginPage}><View style={s.card}><ThemedText style={s.title}>Algo salió mal</ThemedText><ThemedText style={s.error}>No pudimos mostrar esta pantalla. Intenta de nuevo; si continúa, vuelve a iniciar sesión.</ThemedText><Pressable style={s.primary} onPress={onRetry}><ThemedText style={s.primaryText}>Intentar de nuevo</ThemedText></Pressable></View></SafeAreaView>;}
+function AppErrorFallback({onRetry}:{onRetry:()=>void}){const s=useAppStyles();return <SafeAreaView style={s.loginPage}><View style={s.card}><ThemedText style={s.title}>Algo salió mal</ThemedText><ThemedText style={s.error}>No pudimos mostrar esta pantalla. Intenta de nuevo; si continúa, vuelve a iniciar sesión.</ThemedText><ActionButton label="Intentar de nuevo" onPress={onRetry} /></View></SafeAreaView>;}

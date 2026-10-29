@@ -1,3 +1,4 @@
+import { ActionButton } from "../../components/ActionButton";
 import {ThemedText} from "../../theme/ThemedText";
 import { useEffect, useState } from "react";
 import { Linking, Pressable, Text, View } from "react-native";
@@ -114,11 +115,11 @@ export function DocumentButton({ order, token, kind, compact = false }: { order:
       setBusy(false);
     }
   }
-  if (compact) return <View style={s.kitchenPrintArea}><Pressable style={s.kitchenPrintButton} disabled={busy} onPress={() => generate("print")}><ThemedText style={s.kitchenPrintText}>{busy ? "Preparando comanda..." : `Imprimir comanda · ${paperWidth} mm`}</ThemedText></Pressable>{!!message && <ThemedText style={s.kitchenPrintMessage}>{message}</ThemedText>}</View>;
+  if (compact) return <View style={s.kitchenPrintArea}><ActionButton label={busy ? "Preparando comanda..." : `Imprimir comanda · ${paperWidth} mm`} variant="secondary" disabled={busy} onPress={() => generate("print")} />{!!message && <ThemedText style={s.kitchenPrintMessage}>{message}</ThemedText>}</View>;
   return (
     <View style={s.documentActions}>
-      <View style={s.types}>{([58, 80] as ThermalPaperWidth[]).map((width) => <Pressable key={width} onPress={() => setPaperWidth(width)} style={[s.type, paperWidth === width && s.typeActive]}><ThemedText>{width} mm</ThemedText></Pressable>)}</View>
-      <View style={s.inlineFields}><Pressable style={s.secondaryButton} onPress={() => generate("print")} disabled={busy}><ThemedText style={s.secondaryText}>{busy ? "Preparando..." : kind === "kitchen" ? "Imprimir comanda" : "Imprimir reparto"}</ThemedText></Pressable><Pressable style={s.secondaryButton} onPress={() => generate("share")} disabled={busy}><ThemedText style={s.secondaryText}>Compartir</ThemedText></Pressable></View>
+      <View style={s.types}>{([58, 80] as ThermalPaperWidth[]).map((width) => <Pressable accessibilityRole="button" aria-pressed={!!(paperWidth === width)} key={width} onPress={() => setPaperWidth(width)} style={[s.type, paperWidth === width && s.typeActive]}><ThemedText>{width} mm</ThemedText></Pressable>)}</View>
+      <View style={s.inlineFields}><ActionButton label={busy ? "Preparando..." : kind === "kitchen" ? "Imprimir comanda" : "Imprimir reparto"} variant="secondary" disabled={busy} onPress={() => generate("print")} /><ActionButton label="Compartir" variant="secondary" disabled={busy} onPress={() => generate("share")} /></View>
       {!!message && <ThemedText style={s.notice}>{message}</ThemedText>}
     </View>
   );

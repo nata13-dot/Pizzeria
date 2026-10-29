@@ -19,38 +19,21 @@ export function useReducedMotion() {
   return reduced;
 }
 
+/** Short fade and lift on route change; no scale so text never blurs or bounces. */
 export function ScreenMotion({ route, children, style }: { route: string; children: ReactNode; style?: StyleProp<ViewStyle> }) {
   const reduced = useReducedMotion();
   const opacity = useRef(new Animated.Value(1)).current;
   const translateY = useRef(new Animated.Value(0)).current;
-  const scale = useRef(new Animated.Value(1)).current;
   const first = useRef(true);
   useEffect(() => {
     if (first.current) { first.current = false; return; }
-    opacity.stopAnimation(); translateY.stopAnimation(); scale.stopAnimation();
-    if (reduced) { opacity.setValue(1); translateY.setValue(0); scale.setValue(1); return; }
-    opacity.setValue(0); translateY.setValue(motion.screenOffset); scale.setValue(.992);
-    Animated.parallel([
-      Animated.timing(opacity, { duration: motion.screen, easing: Easing.out(Easing.cubic), toValue: 1, useNativeDriver: nativeDriver }),
-      Animated.timing(translateY, { duration: motion.screen, easing: Easing.out(Easing.cubic), toValue: 0, useNativeDriver: nativeDriver }),
-      Animated.spring(scale, { damping: 20, mass: .7, stiffness: 240, toValue: 1, useNativeDriver: nativeDriver }),
-    ]).start();
-  }, [route, reduced, opacity, translateY, scale]);
-  return <Animated.View style={[style, { opacity, transform: [{ translateY }, { scale }] }]}>{children}</Animated.View>;
-}
-
-export function PressMotion({ children, active = false, style }: { children: ReactNode; active?: boolean; style?: StyleProp<ViewStyle> }) {
-  const reduced = useReducedMotion();
-  const scale = useRef(new Animated.Value(1)).current;
-  const lift = useRef(new Animated.Value(0)).current;
-  useEffect(() => {
-    if (reduced) { scale.setValue(1); lift.setValue(0); return; }
-    Animated.parallel([
-      Animated.spring(scale, { damping: 16, mass: .55, stiffness: 300, toValue: active ? 1.025 : 1, useNativeDriver: nativeDriver }),
-      Animated.spring(lift, { damping: 18, mass: .6, stiffness: 280, toValue: active ? -2 : 0, useNativeDriver: nativeDriver }),
-    ]).start();
-  }, [active, reduced, scale, lift]);
-  return <Animated.View style={[style, { transform: [{ translateY: lift }, { scale }] }]}>{children}</Animated.View>;
+    opacity.stopAnimation(); translateY.stopAnimation();
+    if (reduced) { opacity.setValue(1); translateY.setValue(0); return; }
+    opacity.setValue(0); translateY.setValue(motion.screenOffset);
+    const timing = { duration: motion.screen, easing: Easing.out(Easing.cubic), toValue: 0, useNativeDriver: nativeDriver };
+    Animated.parallel([Animated.timing(opacity, { ...timing, toValue: 1 }), Animated.timing(translateY, timing)]).start();
+  }, [route, reduced, opacity, translateY]);
+  return <Animated.View style={[style, { opacity, transform: [{ translateY }] }]}>{children}</Animated.View>;
 }
 
 export function usePressMotion() {

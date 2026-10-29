@@ -246,7 +246,7 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
         ]}
         onChange={(key) => { if (!saving && !gate.busy) setTab(key as ProductionTab); }}
       />
-      <Pressable disabled={refreshing || saving || gate.busy} onPress={() => load()} style={[ops.outlineButton, mobile && ops.fullWidthButton, refreshing && ops.disabled]}><ThemedText style={ops.outlineText}>{refreshing ? "Actualizando..." : "Actualizar"}</ThemedText></Pressable>
+      <ActionButton label={refreshing ? "Actualizando..." : "Actualizar"} variant="secondary" disabled={refreshing || saving || gate.busy} onPress={() => load()} />
     </View>
     <Feedback error={error} message={message} />
 
@@ -259,7 +259,7 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
       <ThemedText style={ops.label}>Receta activa</ThemedText>
       <TextInput label="Buscar preparación" value={productionDirectory.search} maxLength={100} onChangeText={productionDirectory.setSearch} style={ops.input}/>
       <RemoteListStatus {...productionDirectory} count={productionDirectory.items.length} emptyText="No hay recetas activas. Solicita su configuración antes de producir." onRetry={productionDirectory.reload}/>
-      <View style={ops.chips}>{productionDirectory.items.map((recipe) => <Pressable disabled={saving || gate.busy} key={recipe.id} onPress={() => setProductionRecipeId(recipe.id)} style={[ops.chip, productionRecipeId === recipe.id && ops.chipActive]}><ThemedText>{recipe.name}</ThemedText></Pressable>)}</View>
+      <View style={ops.chips}>{productionDirectory.items.map((recipe) => <Pressable accessibilityRole="button" aria-pressed={!!(productionRecipeId === recipe.id)} disabled={saving || gate.busy} key={recipe.id} onPress={() => setProductionRecipeId(recipe.id)} style={[ops.chip, productionRecipeId === recipe.id && ops.chipActive]}><ThemedText>{recipe.name}</ThemedText></Pressable>)}</View>
       <Pagination {...productionDirectory} onPage={productionDirectory.setPage}/>
       {!!productionRecipeId && <RemoteListStatus {...recipeDetail} count={selectedRecipe ? 1 : 0} emptyText="Selecciona una preparación." onRetry={recipeDetail.reload}/>}
       {selectedRecipe && !selectedRecipe.active && <Feedback error="La receta seleccionada está inactiva. Elige otra preparación."/>}
@@ -292,8 +292,8 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
             <TextInput editable={!saving && !gate.busy} style={[ops.input, ops.fieldGrow]} value={portionQuantity} onChangeText={setPortionQuantity} placeholder="Número de porciones" keyboardType="number-pad" />
             <TextInput editable={!saving && !gate.busy} style={[ops.input, ops.fieldGrow]} value={gramsPerPortion} onChangeText={setGramsPerPortion} placeholder="Gramos por porción" keyboardType="decimal-pad" />
           </View>
-          <Pressable disabled={saving || gate.busy} onPress={addPortion} style={ops.outlineButton}><ThemedText style={ops.outlineText}>Agregar porciones</ThemedText></Pressable>
-          {portions.map((portion) => <View style={ops.row} key={portion.id}><ThemedText>{portion.quantity} × {portion.portion_name} de {quantityText(portion.grams_per_portion)} g</ThemedText><Pressable style={ops.inlineTextAction} disabled={saving || gate.busy} onPress={() => setPortions((current) => current.filter((candidate) => candidate.id !== portion.id))}><ThemedText style={ops.dangerText}>Quitar</ThemedText></Pressable></View>)}
+          <ActionButton label="Agregar porciones" variant="secondary" disabled={saving || gate.busy} onPress={addPortion} />
+          {portions.map((portion) => <View style={ops.row} key={portion.id}><ThemedText>{portion.quantity} × {portion.portion_name} de {quantityText(portion.grams_per_portion)} g</ThemedText><ActionButton label="Quitar" variant="secondary" disabled={saving || gate.busy} onPress={() => setPortions((current) => current.filter((candidate) => candidate.id !== portion.id))} /></View>)}
         </View>}
         <ActionButton label="Confirmar consumo y producción" loading={saving || gate.busy} disabled={!selectedRecipe.active || recipeDetail.loading || !!recipeDetail.error || !validMultiplier || !productionDateValid || hasKnownShortage} disabledReason={!selectedRecipe.active ? "Selecciona una receta activa." : recipeDetail.loading || recipeDetail.error ? "Espera o reintenta la carga de la receta." : !validMultiplier ? "Indica cuántas tandas prepararás." : !productionDateValid ? "Corrige la fecha; no puede estar en el futuro." : "Faltan ingredientes: revisa las cantidades disponibles indicadas arriba."} onPress={() => gate.run(produce)} />
       </>}
@@ -321,9 +321,7 @@ export function ProductionScreen({ token, isAdministrator }: { token: string; is
         </View>)}
         {batch.outputs.filter((output) => output.portion_name).map((output) => <ThemedText style={ops.muted} key={output.id}>• {quantityText(output.quantity)} × {output.portion_name} de {quantityText(output.grams_per_portion)} g</ThemedText>)}
       </View>)}
-      {batchPage < batchLastPage && <Pressable disabled={loadingMoreBatches} onPress={loadMoreBatches} style={[ops.outlineButton, loadingMoreBatches && ops.disabled]}>
-        <ThemedText style={ops.outlineText}>{loadingMoreBatches ? "Cargando producciones..." : `Cargar más producciones (página ${batchPage + 1} de ${batchLastPage})`}</ThemedText>
-      </Pressable>}
+      {batchPage < batchLastPage && <ActionButton label={loadingMoreBatches ? "Cargando producciones..." : `Cargar más producciones (página ${batchPage + 1} de ${batchLastPage})`} variant="secondary" disabled={loadingMoreBatches} onPress={loadMoreBatches} />}
     </Section>}
   </View>;
 }

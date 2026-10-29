@@ -1,3 +1,4 @@
+import { ActionButton } from "../../components/ActionButton";
 import {ThemedText} from "../../theme/ThemedText";
 import {useTheme,useThemedStyles} from "../../theme/ThemeProvider";
 import type {Theme} from "../../theme/tokens";
@@ -162,7 +163,7 @@ export function CashScreen({ token }: { token: string }) {
           <ThemedText style={styles.title}>Caja de {day?.date ?? "hoy"}</ThemedText>
           <ThemedText style={styles.muted}>Estado: {day?.status === "open" ? "abierta" : day?.status === "closed" ? "cerrada" : "sin abrir"}</ThemedText>
         </View>
-        <Pressable disabled={busy} style={styles.outlineButton} onPress={() => load()}><ThemedText style={styles.outlineText}>Actualizar</ThemedText></Pressable>
+        <ActionButton label="Actualizar" variant="secondary" disabled={busy} onPress={() => load()} />
       </View>
       <View style={styles.metrics}>
         <Metric label="Ventas" value={money(summary.gross_sales)} />
@@ -177,7 +178,7 @@ export function CashScreen({ token }: { token: string }) {
     {day?.status === "not_opened" && <View style={styles.card}>
       <ThemedText style={styles.title}>Abrir caja</ThemedText>
       <TextInput style={styles.input} value={openingAmount} onChangeText={setOpeningAmount} keyboardType="decimal-pad" placeholder="Fondo inicial" />
-      <Pressable disabled={busy || Number(openingAmount) < 0} style={[styles.primary, busy && styles.disabled]} onPress={openDay}><ThemedText style={styles.primaryText}>Abrir caja del día</ThemedText></Pressable>
+      <ActionButton label="Abrir caja del día" disabled={busy || Number(openingAmount) < 0} onPress={openDay} />
     </View>}
 
     {day?.status === "open" && <>
@@ -185,18 +186,18 @@ export function CashScreen({ token }: { token: string }) {
         <ThemedText style={styles.title}>{movementType === "expense" ? "Registrar egreso de caja" : "Registrar entrada de caja"}</ThemedText>
         <ThemedText style={styles.muted}>Controla el dinero que {movementType === "expense" ? "sale para gastos" : "entra fuera de una venta"}. Quedará registrado con el usuario y la hora.</ThemedText>
         <View style={styles.actions}>
-          {(["income", "expense"] as const).map((type) => <Pressable key={type} onPress={() => setMovementType(type)} style={[styles.choice, movementType === type && styles.choiceActive]}><ThemedText>{type === "income" ? "Entrada" : "Egreso"}</ThemedText></Pressable>)}
+          {(["income", "expense"] as const).map((type) => <Pressable accessibilityRole="button" aria-pressed={!!(movementType === type)} key={type} onPress={() => setMovementType(type)} style={[styles.choice, movementType === type && styles.choiceActive]}><ThemedText>{type === "income" ? "Entrada" : "Egreso"}</ThemedText></Pressable>)}
         </View>
         <TextInput style={styles.input} value={movementAmount} onChangeText={setMovementAmount} keyboardType="decimal-pad" placeholder="Monto" />
         <TextInput style={styles.input} value={movementCategory} onChangeText={setMovementCategory} placeholder={movementType === "expense" ? "Concepto del egreso (ej. gas, transporte)" : "Concepto de la entrada"} />
         <TextInput style={styles.input} value={movementDescription} onChangeText={setMovementDescription} placeholder={movementType === "expense" ? "Motivo del gasto" : "Descripción opcional"} />
-        <Pressable disabled={busy || Number(movementAmount) <= 0 || !movementCategory.trim() || (movementType === "expense" && !movementDescription.trim())} style={[styles.primary, (busy || Number(movementAmount) <= 0 || !movementCategory.trim() || (movementType === "expense" && !movementDescription.trim())) && styles.disabled]} onPress={addMovement}><ThemedText style={styles.primaryText}>{movementType === "expense" ? "Registrar egreso" : "Registrar entrada"}</ThemedText></Pressable>
+        <ActionButton label={movementType === "expense" ? "Registrar egreso" : "Registrar entrada"} disabled={busy || Number(movementAmount) <= 0 || !movementCategory.trim() || (movementType === "expense" && !movementDescription.trim())} onPress={addMovement} />
       </View>
       <View style={styles.card}>
         <ThemedText style={styles.title}>Cerrar caja</ThemedText>
         <ThemedText style={styles.muted}>Cuenta físicamente el efectivo antes de cerrar. El sistema calculará la diferencia contra {money(summary.expected_cash)}.</ThemedText>
         <TextInput style={styles.input} value={actualAmount} onChangeText={setActualAmount} keyboardType="decimal-pad" placeholder="Efectivo real contado" />
-        <Pressable disabled={busy || actualAmount.trim() === "" || Number(actualAmount) < 0} style={[styles.dangerButton, (busy || actualAmount.trim() === "") && styles.disabled]} onPress={closeDay}><ThemedText style={styles.dangerText}>Cerrar caja</ThemedText></Pressable>
+        <ActionButton label="Cerrar caja" variant="destructive" disabled={busy || actualAmount.trim() === "" || Number(actualAmount) < 0} onPress={closeDay} />
       </View>
     </>}
 

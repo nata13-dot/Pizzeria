@@ -52,7 +52,7 @@ export function KitchenBoard({ orders, token, onAction }: { orders: Order[]; tok
     {compact && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.kitchenTabs}>{columns.map((column) => {
       const count = orders.filter((order) => order.status === column.status).length;
       const tone = kitchenTone(column.status,theme);
-      return <Pressable accessibilityRole="tab" accessibilityState={{selected:activeStatus===column.status}} key={column.status} onPress={() => setActiveStatus(column.status)} style={[s.kitchenTab, activeStatus === column.status && s.kitchenTabActive, activeStatus === column.status && { borderBottomColor: tone }]}><ThemedText style={[s.kitchenTabText, activeStatus === column.status && { color: tone }]}>{column.title} ({count})</ThemedText></Pressable>;
+      return <Pressable accessibilityRole="tab" aria-selected={activeStatus===column.status} key={column.status} onPress={() => setActiveStatus(column.status)} style={[s.kitchenTab, activeStatus === column.status && s.kitchenTabActive, activeStatus === column.status && { borderBottomColor: tone }]}><ThemedText style={[s.kitchenTabText, activeStatus === column.status && { color: tone }]}>{column.title} ({count})</ThemedText></Pressable>;
     })}</ScrollView>}
     <View accessibilityLabel={compact?"Pedidos de cocina. Desliza horizontalmente para cambiar de etapa.":undefined} {...(compact ? swipeResponder.panHandlers : {})} style={[s.board, compact && s.boardCompact]}>{visibleColumns.map(({ status, title, empty, icon }) => {
     const columnOrders = orders.filter((order) => order.status === status);
@@ -69,7 +69,7 @@ export function KitchenBoard({ orders, token, onAction }: { orders: Order[]; tok
           <View style={s.kitchenProducts}>{(order.items ?? []).map((item, index) => <KitchenItem item={item} key={item.id ?? `${item.name}-${index}`} />)}</View>
           {!!order.notes && <View style={s.kitchenNote}><ThemedText style={s.kitchenNoteTitle}>NOTA DEL CLIENTE</ThemedText><ThemedText style={s.kitchenNoteText}>{order.notes}</ThemedText></View>}
           <ThemedText style={s.kitchenStageTime}>{kitchenStageTime(order)}</ThemedText>
-          <Pressable disabled={working} style={[s.kitchenAction, { backgroundColor: tone }, working && s.disabled]} onPress={() => advance(order)}>{working ? <ActivityIndicator color={theme.colors.primaryText} /> : <ThemedText style={s.kitchenActionText}>{status === "kitchen_pending" ? "♨  INICIAR PREPARACIÓN" : status === "preparing" ? "✓  TERMINAR" : order.type === "delivery" ? "▣  LISTO PARA REPARTO" : "▣  LISTO PARA ENTREGAR"}</ThemedText>}</Pressable>
+          <Pressable accessibilityRole="button" disabled={working} style={[s.kitchenAction, { backgroundColor: tone }, working && s.disabled]} onPress={() => advance(order)}>{working ? <ActivityIndicator color={theme.colors.primaryText} /> : <ThemedText style={s.kitchenActionText}>{status === "kitchen_pending" ? "♨  INICIAR PREPARACIÓN" : status === "preparing" ? "✓  TERMINAR" : order.type === "delivery" ? "▣  LISTO PARA REPARTO" : "▣  LISTO PARA ENTREGAR"}</ThemedText>}</Pressable>
           <DocumentButton order={order} token={token} kind="kitchen" compact />
           <View pointerEvents="none" style={s.kitchenPaperTear}>{Array.from({length:15},(_,index)=><View key={index} style={s.kitchenPaperTooth}/>)}</View>
         </View>})}

@@ -1,3 +1,4 @@
+import { ActionButton } from "../../components/ActionButton";
 import {ThemedText} from "../../theme/ThemedText";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Pressable, ScrollView, Text, TextInput, View, useWindowDimensions } from "react-native";
@@ -389,11 +390,11 @@ export function OrdersDayScreen({ token, branchId, isAdministrator }: { token: s
       />}
       {advancedCancellation && !isAdministrator && <ThemedText style={s.muted}>Solo un administrador puede cancelar este pedido porque la preparación ya inició.</ThemedText>}
       <View style={s.reportActions}>
-        {!!contactPhone && <Pressable style={s.secondaryButton} onPress={() => openPhoneDialer(contactPhone)}><ThemedText style={s.secondaryText}>☎ Llamar {contactPhone}</ThemedText></Pressable>}
-        {canConfirm && <Pressable disabled={working} style={[s.smallButton, working && s.disabled]} onPress={() => confirmOrder(order)}><ThemedText style={s.primaryText}>{order.courtesy ? "Confirmar cortesía" : order.collect_on_delivery ? "Confirmar contra entrega" : "Confirmar y cobrar efectivo"}</ThemedText></Pressable>}
-        {canSend && (!sendFailure?.warnings.length || isAdministrator) && <Pressable disabled={working} style={[s.smallButton, working && s.disabled]} onPress={() => sendToKitchen(order)}><ThemedText style={s.primaryText}>{sendFailure?.warnings.length ? "Autorizar faltante y enviar" : sendFailure ? "Reintentar envío a cocina" : "Enviar a cocina"}</ThemedText></Pressable>}
-        {canDeliver && <Pressable disabled={working} style={[s.smallButton, working && s.disabled]} onPress={() => markDelivered(order)}><ThemedText style={s.primaryText}>Marcar entregado</ThemedText></Pressable>}
-        {canCancel && <Pressable disabled={working} style={[s.dangerButton, working && s.disabled]} onPress={() => cancelOrder(order)}><ThemedText style={s.dangerText}>Cancelar pedido</ThemedText></Pressable>}
+        {!!contactPhone && <ActionButton label={`☎ Llamar ${contactPhone}`} variant="secondary" onPress={() => openPhoneDialer(contactPhone)} />}
+        {canConfirm && <ActionButton label={order.courtesy ? "Confirmar cortesía" : order.collect_on_delivery ? "Confirmar contra entrega" : "Confirmar y cobrar efectivo"} disabled={working} onPress={() => confirmOrder(order)} />}
+        {canSend && (!sendFailure?.warnings.length || isAdministrator) && <ActionButton label={sendFailure?.warnings.length ? "Autorizar faltante y enviar" : sendFailure ? "Reintentar envío a cocina" : "Enviar a cocina"} disabled={working} onPress={() => sendToKitchen(order)} />}
+        {canDeliver && <ActionButton label="Marcar entregado" disabled={working} onPress={() => markDelivered(order)} />}
+        {canCancel && <ActionButton label="Cancelar pedido" variant="destructive" disabled={working} onPress={() => cancelOrder(order)} />}
         {working && <ActivityIndicator color={theme.colors.primary} />}
       </View>
     </View>;
@@ -405,7 +406,7 @@ export function OrdersDayScreen({ token, branchId, isAdministrator }: { token: s
     const groupOrders=orders.filter((order)=>group.statuses.includes(order.status));
     const presentation=ORDER_GROUP_PRESENTATION[group.key];
     const active=activeGroup.key===group.key;
-    return <Pressable accessibilityRole="button" accessibilityState={{selected:active}} key={group.key} onPress={()=>setActiveGroupKey(group.key)} style={({pressed})=>[s.orderStatusCard,active&&s.orderStatusCardActive,pressed&&s.metricPressed]}>
+    return <Pressable accessibilityRole="button" aria-pressed={active} key={group.key} onPress={()=>setActiveGroupKey(group.key)} style={({pressed})=>[s.orderStatusCard,active&&s.orderStatusCardActive,pressed&&s.metricPressed]}>
       <View style={s.orderStatusHeading}><IconBadge glyph={presentation.icon} tone={presentation.tone} size="large" selected={active}/><View style={s.orderStatusCopy}><ThemedText style={s.orderStatusTitle}>{group.label}</ThemedText><ThemedText style={s.orderStatusCount}>{groupOrders.length}</ThemedText></View><ThemedText style={s.orderStatusChevron}>›</ThemedText></View>
       <View style={s.orderStatusBody}><ThemedText style={s.orderStatusEmptyIcon}>{groupOrders.length?presentation.icon:"○"}</ThemedText><ThemedText style={s.orderStatusBodyTitle}>{groupOrders.length?`${groupOrders.length} ${groupOrders.length===1?"pedido":"pedidos"}`:"Sin pedidos en este estado"}</ThemedText><ThemedText style={s.orderStatusDescription}>{presentation.description}</ThemedText><View style={[s.orderStatusAction,active&&s.orderStatusActionActive]}><ThemedText style={[s.orderStatusActionText,active&&s.orderStatusActionTextActive]}>{groupOrders.length?"Ver pedidos":"Consultar estado"}</ThemedText></View></View>
     </Pressable>;
@@ -417,11 +418,9 @@ export function OrdersDayScreen({ token, branchId, isAdministrator }: { token: s
         <ThemedText style={s.sectionTitle}>Operación de {new Date(`${date}T00:00:00`).toLocaleDateString()}</ThemedText>
         <ThemedText style={s.muted}>{orders.length} pedido(s), incluyendo estados cerrados</ThemedText>
       </View></View>
-      <Pressable disabled={refreshing} style={[s.secondaryButton, refreshing && s.disabled]} onPress={() => load(false, true)}>
-        <ThemedText style={s.secondaryText}>{refreshing ? "Actualizando..." : "↻  Actualizar"}</ThemedText>
-      </Pressable>
+      <ActionButton label={refreshing ? "Actualizando..." : "↻  Actualizar"} variant="secondary" disabled={refreshing} onPress={() => load(false, true)} />
     </View>
-    {!!error && <View style={s.warningBox}><ThemedText style={s.error}>{error}</ThemedText><Pressable style={s.secondaryButton} onPress={() => load(!orders.length, true)}><ThemedText style={s.secondaryText}>Reintentar actualización</ThemedText></Pressable></View>}
+    {!!error && <View style={s.warningBox}><ThemedText style={s.error}>{error}</ThemedText><ActionButton label="Reintentar actualización" variant="secondary" onPress={() => load(!orders.length, true)} /></View>}
     {!!actionError && <ThemedText style={s.error}>{actionError}</ThemedText>}
     {!!notice && <ThemedText style={s.notice}>{notice}</ThemedText>}
     {busy ? <ActivityIndicator color={theme.colors.primary} style={{ margin: 40 }} /> : <>

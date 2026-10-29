@@ -1,3 +1,4 @@
+import { ActionButton } from "../../components/ActionButton";
 import {ThemedText} from "../../theme/ThemedText";
 import { Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useState } from "react";
@@ -66,12 +67,12 @@ export function DeliveryBoard({ orders, token, onAction, onReload }: { orders: O
         : <ThemedText style={s.paid}>✓ Sin saldo por cobrar</ThemedText>}
       <ThemedText style={s.muted}>Pago: {paymentLabel}</ThemedText>
       <View style={[s.reportActions, mobile && s.deliveryActionsMobile]}>
-        {delivery?.phone && <Pressable style={[s.secondaryButton, mobile && s.deliveryActionMobile]} onPress={() => openPhoneDialer(delivery.phone)}><ThemedText style={s.secondaryText}>☎ Llamar</ThemedText></Pressable>}
-        {delivery?.phone && <Pressable style={[s.secondaryButton, mobile && s.deliveryActionMobile]} onPress={() => Linking.openURL(`https://wa.me/${delivery.phone.replace(/\D/g, "")}`)}><ThemedText style={s.secondaryText}>WhatsApp</ThemedText></Pressable>}
-        {mapUrl && <Pressable style={[s.secondaryButton, mobile && s.deliveryActionMobile]} onPress={() => Linking.openURL(mapUrl)}><ThemedText style={s.secondaryText}>Mapa</ThemedText></Pressable>}
+        {delivery?.phone && <ActionButton label="☎ Llamar" variant="secondary" style={mobile ? s.deliveryActionMobile : undefined} onPress={() => openPhoneDialer(delivery.phone)} />}
+        {delivery?.phone && <ActionButton label="WhatsApp" variant="secondary" style={mobile ? s.deliveryActionMobile : undefined} onPress={() => Linking.openURL(`https://wa.me/${delivery.phone.replace(/\D/g, "")}`)} />}
+        {mapUrl && <ActionButton label="Mapa" variant="secondary" style={mobile ? s.deliveryActionMobile : undefined} onPress={() => Linking.openURL(mapUrl)} />}
       </View>
-      {["ready", "on_way"].includes(order.status) && <Pressable style={s.smallButton} onPress={() => advance(order)}><ThemedText style={s.primaryText}>{order.status === "ready" ? "Marcar en camino" : "Marcar entregado"}</ThemedText></Pressable>}
-      {["ready", "on_way"].includes(order.status) && collectionRequired && <Pressable style={s.secondaryButton} onPress={() => payment(order)}><ThemedText style={s.secondaryText}>Registrar cobro en efectivo</ThemedText></Pressable>}
+      {["ready", "on_way"].includes(order.status) && <ActionButton label={order.status === "ready" ? "Marcar en camino" : "Marcar entregado"} onPress={() => advance(order)} />}
+      {["ready", "on_way"].includes(order.status) && collectionRequired && <ActionButton label="Registrar cobro en efectivo" variant="secondary" onPress={() => payment(order)} />}
       <DocumentButton order={order} token={token} kind="delivery" />
     </View>;
   }
@@ -83,7 +84,7 @@ export function DeliveryBoard({ orders, token, onAction, onReload }: { orders: O
   const visibleLanes = compact ? lanes.filter((lane) => lane.key === activeLane) : lanes;
   return <View style={s.deliveryBoard}>
     {!!paymentError && <ThemedText style={s.error}>{paymentError}</ThemedText>}
-    {compact && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.deliveryTabs}>{lanes.map((lane) => <Pressable accessibilityRole="tab" accessibilityState={{ selected: activeLane === lane.key }} key={lane.key} onPress={() => setActiveLane(lane.key)} style={[s.deliveryTab, activeLane === lane.key && s.deliveryTabActive]}><ThemedText style={[s.deliveryTabText, activeLane === lane.key && s.deliveryTabTextActive]}>{lane.label} ({lane.orders.length})</ThemedText></Pressable>)}</ScrollView>}
+    {compact && <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.deliveryTabs}>{lanes.map((lane) => <Pressable accessibilityRole="tab" aria-selected={activeLane === lane.key} key={lane.key} onPress={() => setActiveLane(lane.key)} style={[s.deliveryTab, activeLane === lane.key && s.deliveryTabActive]}><ThemedText style={[s.deliveryTabText, activeLane === lane.key && s.deliveryTabTextActive]}>{lane.label} ({lane.orders.length})</ThemedText></Pressable>)}</ScrollView>}
     <View style={[s.deliveryColumns, compact && s.deliveryColumnsCompact]}>{visibleLanes.map((lane) => <View style={[s.deliveryColumn, compact && s.deliveryColumnCompact]} key={lane.key}><ThemedText style={s.sectionTitle}>{lane.label} ({lane.orders.length})</ThemedText>{lane.orders.map(card)}{!lane.orders.length && <Empty />}</View>)}</View>
   </View>;
 }

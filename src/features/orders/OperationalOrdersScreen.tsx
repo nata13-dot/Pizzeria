@@ -1,3 +1,4 @@
+import { ActionButton } from "../../components/ActionButton";
 import {ThemedText} from "../../theme/ThemedText";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, Pressable, Text, View } from "react-native";
@@ -34,6 +35,6 @@ export function OperationalOrdersScreen({mode,token,branchId}:{mode:"kitchen"|"d
   useEffect(()=>{let connected=false;let background=AppState.currentState!=="active";let poll:ReturnType<typeof setTimeout>;let coalesce:ReturnType<typeof setTimeout>|undefined;const schedule=()=>{clearTimeout(poll);poll=setTimeout(async()=>{if(!background)await load(false);schedule();},operationalPollInterval(connected,!background));};const reload=()=>{clearTimeout(coalesce);coalesce=setTimeout(()=>{if(!background)void load(false);},coalescedReloadDelay(lastLoadAt.current));};const leave=ordersChannel(token,branchId,reload,value=>{connected=value;schedule();});const subscription=AppState.addEventListener("change",state=>{background=state!=="active";if(!background)reload();schedule();});schedule();return()=>{clearTimeout(poll);clearTimeout(coalesce);subscription.remove();leave();};},[mode,token,branchId]);
   async function action(order:Order,status:OrderStatus){setError("");try{await api(`/orders/${order.id}/status`,token,{method:"POST",body:JSON.stringify({status})});await load(false);return true;}catch(caught){setError((caught as Error).message);return false;}}
   if(busy)return <ActivityIndicator color={theme.colors.primary} style={{margin:40}}/>;
-  if(error&&!data.length)return <View style={s.warningBox}><ThemedText style={s.error}>{error}</ThemedText><Pressable style={s.secondaryButton} onPress={()=>load()}><ThemedText style={s.secondaryText}>Reintentar</ThemedText></Pressable></View>;
+  if(error&&!data.length)return <View style={s.warningBox}><ThemedText style={s.error}>{error}</ThemedText><ActionButton label="Reintentar" variant="secondary" onPress={()=>load()} /></View>;
   return <View>{!!error&&<ThemedText style={s.error}>{error}</ThemedText>}{mode==="kitchen"?<KitchenBoard orders={data} token={token} onAction={action}/>:<DeliveryBoard orders={data} token={token} onAction={action} onReload={()=>load(false)}/>}</View>;
 }

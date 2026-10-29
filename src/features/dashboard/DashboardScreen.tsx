@@ -1,3 +1,4 @@
+import { ActionButton } from "../../components/ActionButton";
 import {ThemedText} from "../../theme/ThemedText";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, Text, View, useWindowDimensions } from "react-native";
@@ -18,7 +19,7 @@ export function DashboardScreen({token,onNavigate}:{token:string;onNavigate:(scr
   const [error,setError]=useState("");
   const [revision,setRevision]=useState(0);
   useEffect(()=>{let active=true;setError("");Promise.all([api<CashDashboard>("/reports/cash-day",token),api<OrderDashboard>("/orders?status=kitchen_pending",token),api<AlertDashboard[]>("/inventory/alerts",token)]).then(([cash,orders,alerts])=>{if(active)setValues([cash.gross_sales??0,orders.total??orders.data?.length??0,alerts.filter((alert)=>alert.type.includes("stock")).length,alerts.filter((alert)=>["expiring","expired"].includes(alert.type)).length])}).catch((loadError)=>{if(active){setValues(null);setError((loadError as Error).message)}});return()=>{active=false}},[token,revision]);
-  if(error)return <View style={s.warningBox}><ThemedText style={s.error}>No se pudo cargar el resumen: {error}</ThemedText><Pressable style={s.secondaryButton} onPress={()=>setRevision((value)=>value+1)}><ThemedText style={s.secondaryText}>Reintentar</ThemedText></Pressable></View>;
+  if(error)return <View style={s.warningBox}><ThemedText style={s.error}>No se pudo cargar el resumen: {error}</ThemedText><ActionButton label="Reintentar" variant="secondary" onPress={()=>setRevision((value)=>value+1)} /></View>;
   if(!values)return <ActivityIndicator color={theme.colors.primary} style={{margin:40}}/>;
   return (
     <View style={[s.metrics, compact && s.metricsCompact]}>

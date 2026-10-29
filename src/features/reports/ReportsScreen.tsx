@@ -1,3 +1,4 @@
+import { ActionButton } from "../../components/ActionButton";
 import {ThemedText} from "../../theme/ThemedText";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, FlatList, Linking, Pressable, ScrollView, Text, View } from "react-native";
@@ -58,7 +59,7 @@ export function ReportsScreen({ token }: { token: string }) {
     <View style={[s.reportLayout, mobile && s.reportLayoutMobile]}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.types}>
         {options.map(([key, label]) => (
-          <Pressable key={key} onPress={() => setReport(key)} style={[s.type, report === key && s.typeActive]}>
+          <Pressable accessibilityRole="button" aria-pressed={!!(report === key)} key={key} onPress={() => setReport(key)} style={[s.type, report === key && s.typeActive]}>
             <ThemedText>{label}</ThemedText>
           </Pressable>
         ))}
@@ -68,12 +69,8 @@ export function ReportsScreen({ token }: { token: string }) {
         <ThemedText style={s.muted}>{options.find(([key]) => key === report)?.[2]}</ThemedText>
       </View>
       <View style={[s.reportActions, mobile && s.reportActionsMobile]}>
-        <Pressable style={[s.smallButton, mobile && s.fullWidthAction]} onPress={() => load()}>
-          <ThemedText style={s.primaryText}>Generar reporte de {options.find(([key]) => key === report)?.[1]}</ThemedText>
-        </Pressable>
-        {report === "cash-day" && <Pressable style={[s.smallButton, mobile && s.fullWidthAction]} onPress={daily}>
-          <ThemedText style={s.primaryText}>Enviar resumen diario por WhatsApp</ThemedText>
-        </Pressable>}
+        <ActionButton label={`Generar reporte de ${options.find(([key]) => key === report)?.[1]}`} style={mobile && s.fullWidthAction ? s.fullWidthAction : undefined} onPress={() => load()} />
+        {report === "cash-day" && <ActionButton label="Enviar resumen diario por WhatsApp" style={mobile && s.fullWidthAction ? s.fullWidthAction : undefined} onPress={daily} />}
       </View>
       <View style={s.inlineFields}><TextInput style={[s.input, s.flexField]} placeholder="Desde AAAA-MM-DD" value={from} onChangeText={setFrom} /><TextInput style={[s.input, s.flexField]} placeholder="Hasta AAAA-MM-DD" value={to} onChangeText={setTo} /></View>
       {busy ? <ActivityIndicator color={theme.colors.primary} style={{ margin: 30 }} /> : <ReportData key={report} data={data} />}
