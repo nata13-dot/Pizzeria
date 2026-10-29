@@ -40,7 +40,7 @@ test('important local edits warn; memory drafts permit navigation and warn on lo
  globalThis.__confirmWork=()=>true;assert.equal(await store.leave(),true);
  store.guards.clear();store.memoryDirty.add('la receta');globalThis.__confirmWork=()=>false;assert.equal(await store.leave(),true);assert.equal(await store.leave(true),false);
 });
-async function fillSale(){await act(async()=>{store.set('pos','cart',[{key:'p',kind:'product',variantId:1,name:'Pizza prueba · Grande',unitPrice:100,quantity:1,flavorIds:[],flavorNames:[],modifierIds:[],modifierNames:[],notes:''}],[]);store.set('pos','pickup',true,false);store.set('pos','recipient','Ana','');store.set('pos','phone','123','');store.set('pos','payment','cash','');});}
+async function fillSale(){await act(async()=>{store.set('pos','step','confirm','order');store.set('pos','cart',[{key:'p',kind:'product',variantId:1,name:'Pizza prueba · Grande',unitPrice:100,quantity:1,flavorIds:[],flavorNames:[],modifierIds:[],modifierNames:[],notes:''}],[]);store.set('pos','pickup',true,false);store.set('pos','recipient','Ana','');store.set('pos','phone','123','');store.set('pos','payment','cash','');});}
 test('confirmed sale clears durable cart and operation only after server confirms',async()=>{
  setup();globalThis.__confirmWork=()=>true;const catalog=globalThis.__p0Api;let posts=0;
  globalThis.__p0Api=async(path,token,options)=>{if(path==='/orders'){posts++;assert.ok([...globalThis.__workDisk.values()].some(raw=>JSON.parse(raw).operation?.key===options.headers['Idempotency-Key']));return {id:8,daily_number:8,status:'confirmed',total:100};}if(path.endsWith('/send-to-kitchen'))return {id:8,daily_number:8,status:'kitchen_pending',total:100};return catalog(path,token,options);};
