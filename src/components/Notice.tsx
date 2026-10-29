@@ -9,7 +9,7 @@ export function useFeedback(defaultKind:NoticeKind="success"): [string,SetFeedba
   const [state,setState]=useState<{message:string;kind:NoticeKind}>({message:'',kind:'info'});
   return [state.message,(message,kind=defaultKind)=>setState({message,kind}),state.kind];
 }
-const labels={success:'✓ Guardado',error:'! No se completó',warning:'! Revisa antes de continuar',info:'ⓘ Información'};
+const labels={success:'✓ Listo',error:'! No se completó',warning:'! Revisa antes de continuar',info:'ⓘ Información'};
 export function Notice({kind='info',message}:{kind?:NoticeKind;message?:string}) {
   const styles=useThemedStyles(createStyles);
   if(!message)return null;

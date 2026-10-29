@@ -92,7 +92,7 @@ export function ConfirmationDialogHost() {
         style={styles.card}
       >
         <View style={styles.icon}><ThemedText style={styles.iconText}>?</ThemedText></View>
-        <ThemedText style={styles.title}>{request?.options?.title ?? "Confirmar acción"}</ThemedText>
+        <ThemedText style={styles.title}>{request?.options?.title ?? request?.options?.acceptLabel ?? "¿Deseas continuar?"}</ThemedText>
         <ThemedText style={styles.message}>{request?.message}</ThemedText>
         <View style={styles.actions}>
           <Pressable testID="confirmation-cancel" accessibilityRole="button" onPress={() => answer(false)} style={[styles.button, styles.cancelButton]}>

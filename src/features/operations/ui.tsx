@@ -4,8 +4,8 @@ import type { ReactNode } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
-  Text,
   View,
 } from "react-native";
 import { api, type ApiRequestOptions } from "../../api";
@@ -100,15 +100,58 @@ export function Tabs({
   onChange: (key: string) => void;
 }) {
   const ops=useOpsStyles();
-  return <View style={ops.tabs}>
+  // Scrolls sideways on narrow screens instead of wrapping into a tall block.
+  return <ScrollView horizontal showsHorizontalScrollIndicator={false} style={ops.tabsScroller} contentContainerStyle={ops.tabs} accessibilityRole="tablist">
     {items.map((item) => <Pressable
-      accessibilityRole="button"
+      accessibilityRole="tab"
+      aria-selected={active === item.key}
       key={item.key}
       onPress={() => onChange(item.key)}
       style={[ops.tab, active === item.key && ops.tabActive]}
     >
-      <ThemedText style={[ops.tabText, active === item.key && ops.tabTextActive]}>{item.label}</ThemedText>
+      <ThemedText numberOfLines={1} style={[ops.tabText, active === item.key && ops.tabTextActive]}>{item.label}</ThemedText>
     </Pressable>)}
+  </ScrollView>;
+}
+
+/** Single-choice group rendered as large touch targets; replaces ad-hoc chip rows. */
+export function Choices<K extends string | number>({
+  label,
+  options,
+  value,
+  onChange,
+  disabled = false,
+  error,
+}: {
+  label?: string;
+  options: { key: K; label: string; hint?: string }[];
+  value: K | null;
+  onChange: (key: K) => void;
+  disabled?: boolean;
+  error?: string;
+}) {
+  const ops = useOpsStyles();
+  return <View style={ops.choiceGroup}>
+    {!!label && <ThemedText style={ops.label}>{label}</ThemedText>}
+    <View accessibilityRole="radiogroup" accessibilityLabel={label} style={ops.chips}>
+      {options.map((option) => {
+        const selected = option.key === value;
+        return <Pressable
+          key={String(option.key)}
+          accessibilityRole="radio"
+          accessibilityLabel={option.label}
+          aria-checked={selected} aria-disabled={disabled}
+          accessibilityHint={option.hint}
+          disabled={disabled}
+          onPress={() => onChange(option.key)}
+          style={[ops.chip, selected && ops.chipActive, disabled && ops.chipDisabled]}
+        >
+          <ThemedText style={selected ? ops.chipTextActive : undefined}>{option.label}</ThemedText>
+          {!!option.hint && <ThemedText style={ops.chipHint}>{option.hint}</ThemedText>}
+        </Pressable>;
+      })}
+    </View>
+    {!!error && <ThemedText accessibilityRole="alert" style={ops.fieldError}>Error: {error}</ThemedText>}
   </View>;
 }
 
@@ -181,7 +224,8 @@ export const createOpsStyles = (theme:Theme)=>StyleSheet.create({
     justifyContent: "space-between",
   },
   toolbarMobile: { alignItems: "stretch", flexDirection: "column" },
-  tabs: { backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.pill, flexDirection: "row", flexWrap: "wrap", gap: 6, padding: 5 },
+  tabsScroller: { flexGrow: 0, flexShrink: 1, maxWidth: "100%" },
+  tabs: { backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.pill, flexDirection: "row", gap: 6, padding: 5 },
   tab: { alignItems: "center", backgroundColor: theme.colors.surfaceMuted, borderRadius: theme.radius.pill, justifyContent: "center", minHeight: theme.control.minTouch, paddingHorizontal: 18, paddingVertical: 10 },
   tabActive: { ...theme.shadows.surface, backgroundColor: theme.colors.primary },
   tabText: { color: theme.colors.textMuted, fontWeight: "700" },
@@ -217,6 +261,19 @@ export const createOpsStyles = (theme:Theme)=>StyleSheet.create({
   chip: { alignItems: "center", backgroundColor: theme.colors.surfaceMuted, borderColor: "transparent", borderRadius: theme.radius.pill, borderWidth: 1, justifyContent: "center", minHeight: theme.control.minTouch, paddingHorizontal: 16, paddingVertical: 10 },
   chipActive: { backgroundColor: theme.colors.primarySurface, borderColor: theme.colors.primary },
   chipDisabled: { opacity: theme.control.disabledOpacity },
+  chipTextActive: { color: theme.colors.primary, fontWeight: "800" },
+  chipHint: { color: theme.colors.textMuted, ...theme.typography.caption, textAlign: "center" },
+  choiceGroup: { gap: 8 },
+  fieldError: { color: theme.colors.dangerText, ...theme.typography.caption },
+  statusPill: { alignSelf: "flex-start", borderRadius: theme.radius.pill, overflow: "hidden", paddingHorizontal: 10, paddingVertical: 4, ...theme.typography.caption },
+  pillGood: { backgroundColor: theme.colors.successSurface, color: theme.colors.successText },
+  pillWarning: { backgroundColor: theme.colors.warningSurface, color: theme.colors.warningText },
+  pillDanger: { backgroundColor: theme.colors.dangerSurface, color: theme.colors.dangerText },
+  pillNeutral: { backgroundColor: theme.colors.surfaceMuted, color: theme.colors.textMuted },
+  actionsRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  bigNumber: { color: theme.colors.text, ...theme.typography.numeric },
+  backLink: { alignSelf: "flex-start", justifyContent: "center", minHeight: theme.control.minTouch, paddingHorizontal: 4 },
+  backLinkText: { color: theme.colors.primary, fontWeight: "800" },
   button: { ...theme.shadows.surface, alignItems: "center", backgroundColor: theme.colors.primary, borderRadius: theme.radius.pill, justifyContent: "center", minHeight: theme.control.minTouch, paddingHorizontal: 20, paddingVertical: 11 },
   buttonText: { color: theme.colors.primaryText, fontWeight: "800" },
   outlineButton: { backgroundColor: theme.colors.primarySurface, borderColor: theme.colors.primarySurface, borderRadius: theme.radius.pill, borderWidth: 1, minHeight: theme.control.minTouch, paddingHorizontal: 18, paddingVertical: 11 },

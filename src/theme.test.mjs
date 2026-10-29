@@ -44,7 +44,7 @@ test('screen motion preserves mounted state while the route changes',()=>{
  let mounts=0;function Stateful(){const [value,setValue]=useState(0);useEffect(()=>{mounts++;},[]);return React.createElement('button',{onClick:()=>setValue(current=>current+1)},`Contenido ${value}`);}const view=render(React.createElement(ScreenMotion,{route:'dashboard'},React.createElement(Stateful)));fireEvent.click(view.getByRole('button',{name:'Contenido 0'}));view.rerender(React.createElement(ScreenMotion,{route:'orders'},React.createElement(Stateful)));assert.ok(view.getByRole('button',{name:'Contenido 1'}));assert.equal(mounts,1);
 });
 test('browser motion rules cover controls and reduced-motion preference',()=>{
- render(React.createElement(ThemeProvider,null,React.createElement(ActionButton,{label:'Continuar',onPress:()=>{}})));const css=document.getElementById('pizzeria-theme-browser-rules')?.textContent??'';assert.match(css,/role="tab"/);assert.match(css,/prefers-reduced-motion:reduce/);assert.match(css,/scale:\.97/);
+ render(React.createElement(ThemeProvider,null,React.createElement(ActionButton,{label:'Continuar',onPress:()=>{}})));const css=document.getElementById('pizzeria-theme-browser-rules')?.textContent??'';assert.match(css,/role="tab"/);assert.match(css,/prefers-reduced-motion:reduce/);assert.match(css,/:active\{filter:brightness/);assert.match(css,/:focus-visible\{outline/);assert.doesNotMatch(css,/scale:|translate:/);
 });
 test('large themed glyphs do not inherit the body line height',()=>{
  const view=render(React.createElement(ThemeProvider,null,React.createElement(ThemedText,{style:{fontSize:60}},'🍕')));const glyph=view.getByText('🍕');assert.equal(glyph.style.fontSize,'60px');assert.equal(glyph.style.lineHeight,'');
