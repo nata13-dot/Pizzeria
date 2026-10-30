@@ -17,7 +17,7 @@ import { screenComposition } from "./screenComposition";
 
 export function ScreenContent({screen,token,branchId,userId,isAdministrator,canOverrideStock,onNavigate}:{screen:Screen;token:string;branchId:number;userId:number;isAdministrator:boolean;canOverrideStock:boolean;onNavigate:(screen:Screen)=>void}){
   const component=screenComposition[screen];
-  if(component==="dashboard")return <DashboardScreen token={token} onNavigate={onNavigate}/>;
+  if(component==="dashboard")return <DashboardScreen token={token} branchId={branchId} onNavigate={onNavigate}/>;
   if(component==="pos")return <PosScreen token={token} isAdministrator={isAdministrator} canOverrideStock={canOverrideStock}/>;
   if(component==="orders")return <OrdersDayScreen token={token} branchId={branchId} isAdministrator={isAdministrator}/>;
   if(component==="cash")return <CashScreen token={token}/>;
