@@ -11,7 +11,7 @@ export function Card({ title, subtitle, action, children, style }: { title: stri
   const styles = useDashboardStyles();
   return <View style={[styles.card, style]}>
     <View style={styles.cardHeader}>
-      <View style={styles.grow}><ThemedText style={styles.cardTitle}>{title}</ThemedText>{!!subtitle && <ThemedText style={styles.muted}>{subtitle}</ThemedText>}</View>
+      <View style={styles.cardTitleBlock}><ThemedText style={styles.cardTitle}>{title}</ThemedText>{!!subtitle && <ThemedText style={styles.muted}>{subtitle}</ThemedText>}</View>
       {action}
     </View>
     {children}
@@ -23,7 +23,7 @@ export function Kpi({ label, value, detail, trend, onPress }: { label: string; v
   const styles = useDashboardStyles();
   const body = <>
     <ThemedText style={styles.kpiLabel}>{label}</ThemedText>
-    <ThemedText style={styles.kpiValue} numberOfLines={1} adjustsFontSizeToFit>{value}</ThemedText>
+    <ThemedText style={styles.kpiValue}>{value}</ThemedText>
     {!!trend && <ThemedText style={[styles.trend, trend.tone === "good" ? styles.trendGood : trend.tone === "bad" ? styles.trendBad : styles.muted]}>{trend.text}</ThemedText>}
     {!!detail && <ThemedText style={styles.muted}>{detail}</ThemedText>}
   </>;
@@ -84,9 +84,10 @@ const createStyles = (theme: Theme) => StyleSheet.create({
   cardHeader: { alignItems: "center", flexDirection: "row", flexWrap: "wrap", gap: 10 },
   row: { alignItems: "stretch", flexDirection: "row", flexWrap: "wrap", gap: 16 },
   stages: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  stage: { flexBasis: 92, flexGrow: 1, padding: 12 },
+  stage: { flexBasis: 92 * theme.fontScale, flexGrow: 1, padding: 12 },
   cardTitle: { color: theme.colors.text, ...theme.typography.subheading },
-  kpi: { ...theme.shadows.surface, backgroundColor: theme.colors.surfaceRaised, borderColor: theme.colors.border, borderRadius: theme.radius.card, borderWidth: 1, flexBasis: 150, flexGrow: 1, gap: 4, minWidth: 0, padding: 16 },
+  cardTitleBlock: { flexBasis: 200 * theme.fontScale, flexGrow: 1, minWidth: 0 },
+  kpi: { ...theme.shadows.surface, backgroundColor: theme.colors.surfaceRaised, borderColor: theme.colors.border, borderRadius: theme.radius.card, borderWidth: 1, flexBasis: 150 * theme.fontScale, flexGrow: 1, gap: 4, minWidth: 0, padding: 16 },
   pressed: { opacity: .85 },
   kpiLabel: { color: theme.colors.textMuted, ...theme.typography.label },
   kpiValue: { color: theme.colors.text, ...theme.typography.title },

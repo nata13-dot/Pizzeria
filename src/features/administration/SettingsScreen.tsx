@@ -10,6 +10,7 @@ import { api } from "../../api";
 import { getConfiguredThermalPrinter, isNativeAndroid, saveThermalPaperWidth, selectThermalPrinter, type SavedPrinter, type ThermalPaperWidth } from "../../printing";
 import { LogoPicker } from "./LogoPicker";
 import type { SystemFontSize } from "../../theme/tokens";
+import { FontScaleControl } from "../../components/FontScaleControl";
 import { useAudioPlayer } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
 import { notificationTones, type CustomNotificationTone, type NotificationToneKey } from "../../notificationTones";
@@ -26,7 +27,7 @@ type Preferences = { system_font_size: SystemFontSize; receipt_font_size: Receip
 
 export function SettingsScreen({ token, isAdministrator }: { token: string; isAdministrator: boolean }) {
   const styles=useThemedStyles(createStyles);
-  const {theme,setFontSize:setSystemFontSize}=useTheme();
+  const {theme}=useTheme();
   const [profile, setProfile] = useState<BusinessProfile | null>(null);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [logoBase64, setLogoBase64] = useState("");
@@ -46,7 +47,6 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
       const [nextPreferences, nextNotificationPreferences] = await Promise.all([api<Preferences>("/preferences", token), readNotificationPreferences()]);
       setPreferences(nextPreferences);
       setNotificationPreferences(nextNotificationPreferences);
-      setSystemFontSize(nextPreferences.system_font_size);
       if (isAdministrator) {
         const [nextProfile, nextSettings] = await Promise.all([
           api<BusinessProfile>("/business-profile", token), api<Settings>("/settings", token),
@@ -76,7 +76,6 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
     try {
       const saved = await api<Preferences>("/preferences", token, { method: "PUT", body: JSON.stringify({ [field]: size }) });
       setPreferences(saved);
-      if (field === "system_font_size") setSystemFontSize(saved.system_font_size);
       setPrinterMessage(`${field === "system_font_size" ? "Tamaño del sistema" : "Tamaño del ticket"} guardado: ${fontSizeLabels[size]}.`);
     } catch (error) { setPrinterMessage((error as Error).message); }
     finally { setPrinterBusy(false); }
@@ -147,10 +146,9 @@ export function SettingsScreen({ token, isAdministrator }: { token: string; isAd
   return <View style={styles.container}>
     {!!message && <ThemedText style={styles.notice}>{message}</ThemedText>}
     <View style={styles.card}>
-      <ThemedText style={styles.title}>Tamaño de fuente</ThemedText>
-      <ThemedText style={styles.muted}>Estas preferencias pertenecen a tu perfil. Elige cada tamaño por separado.</ThemedText>
-      <FontSizeSlider label="Fuente del sistema" value={preferences.system_font_size} disabled={printerBusy} onChange={(size) => changeFontSize("system_font_size", size)} preview="system" />
+      <FontScaleControl />
       <View style={styles.divider} />
+      <ThemedText style={styles.muted}>La letra del ticket se guarda en tu perfil y se imprime igual en cualquier equipo.</ThemedText>
       <FontSizeSlider label="Fuente del ticket" value={preferences.receipt_font_size} disabled={printerBusy} onChange={(size) => changeFontSize("receipt_font_size", size)} preview="ticket" />
       <ThemedText style={styles.title}>Impresora térmica</ThemedText>
       {isNativeAndroid() ? <>

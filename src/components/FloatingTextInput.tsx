@@ -94,7 +94,7 @@ const createStyles = (theme:Theme)=>StyleSheet.create({
     zIndex: 2,
   },
   labelFocused: { color: theme.colors.primary },
-  input:{backgroundColor:theme.colors.surfaceMuted,borderColor:theme.colors.surfaceMuted,borderRadius:theme.radius.control,borderWidth:1,color:theme.colors.text,minHeight:theme.control.minTouch,paddingHorizontal:16,paddingVertical:12},
+  input:{backgroundColor:theme.colors.surfaceMuted,borderColor:theme.colors.surfaceMuted,borderRadius:theme.radius.control,borderWidth:1,color:theme.colors.text,fontSize:theme.typography.body.fontSize,minHeight:theme.control.minTouch,paddingHorizontal:16,paddingVertical:12},
   focus:{borderColor:theme.colors.focus,borderWidth:2},
   error:{borderColor:theme.colors.danger,borderWidth:2},
   errorText:{color:theme.colors.dangerText},

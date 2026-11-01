@@ -94,7 +94,7 @@ export function DashboardScreen({ token, branchId, onNavigate }: { token: string
       </Card>}
       {pipeline && <Card title="Pedidos en curso" subtitle="Toca una etapa para ver sus pedidos." style={column}>
         <View style={styles.stages}>{stages.map((stage) => <Pressable key={stage.key} accessibilityRole="button" accessibilityLabel={`${stage.label}: ${pipeline[stage.key] ?? 0}. Ver pedidos`} onPress={() => onNavigate("orders")} style={({ pressed }) => [styles.kpi, styles.stage, pressed && styles.pressed]}>
-          <ThemedText style={styles.kpiValue}>{pipeline[stage.key] ?? 0}</ThemedText><ThemedText numberOfLines={1} adjustsFontSizeToFit style={styles.kpiLabel}>{stage.label}</ThemedText>
+          <ThemedText style={styles.kpiValue}>{pipeline[stage.key] ?? 0}</ThemedText><ThemedText style={styles.kpiLabel}>{stage.label}</ThemedText>
         </Pressable>)}</View>
         {!!recent?.length && <View>
           <ThemedText style={styles.rowTitle}>Últimos pedidos</ThemedText>

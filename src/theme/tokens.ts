@@ -23,8 +23,8 @@ export const darkColors:ThemeColors={background:"#090909",surface:"#171717",surf
 export function statusBarStyle(mode:ThemeMode):"light"|"dark"{return mode==="dark"?"light":"dark";}
 const sizeScale:Record<SystemFontSize,number>={small:.8,medium:1,large:1.2};
 const typeBase:Record<TypographyKey,[number,number,TextStyle["fontWeight"]]>={display:[36,44,"900"],title:[28,36,"900"],heading:[22,29,"900"],subheading:[18,25,"800"],body:[14,21,"400"],bodyStrong:[14,21,"800"],label:[13,19,"800"],caption:[11,16,"700"],numeric:[24,31,"900"]};
-export function createTheme(mode:ThemeMode,fontSize:SystemFontSize="medium"):Theme{
- const scale=sizeScale[fontSize];const colors=mode==="dark"?darkColors:lightColors;
+export function createTheme(mode:ThemeMode,fontSize:SystemFontSize|number="medium"):Theme{
+ const scale=typeof fontSize==="number"?fontSize:sizeScale[fontSize];const colors=mode==="dark"?darkColors:lightColors;
  const typography=Object.fromEntries(Object.entries(typeBase).map(([key,[size,line,fontWeight]])=>[key,{fontSize:size*scale,lineHeight:line*scale,fontWeight}])) as Theme["typography"];
  const shadowBase={shadowColor:colors.shadow,shadowOffset:{width:0,height:2},shadowOpacity:mode==="dark"?.3:.09,shadowRadius:8};
  return {mode,fontScale:scale,colors,typography,spacing:{xs:4,sm:8,md:12,lg:16,xl:20,xxl:24},radius:{control:14,card:20,section:24,modal:28,pill:999},control:{minTouch:48,disabledOpacity:.48},shadows:{surface:Platform.OS==="web"?shadowBase:{...shadowBase,elevation:2},floating:Platform.OS==="web"?{...shadowBase,shadowOffset:{width:0,height:10},shadowOpacity:mode==="dark"?.45:.16,shadowRadius:24}:{...shadowBase,shadowOffset:{width:0,height:10},shadowOpacity:mode==="dark"?.45:.16,shadowRadius:24,elevation:12}}};

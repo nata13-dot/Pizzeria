@@ -1,23 +1,25 @@
 import {createContext,useCallback,useContext,useEffect,useLayoutEffect,useMemo,useState,type ReactNode} from "react";
 import {Animated,Platform,Pressable,StyleSheet,Text} from "react-native";
-import {createTheme,type SystemFontSize,type Theme,type ThemeMode} from "./tokens";
+import {createTheme,type Theme,type ThemeMode} from "./tokens";
+import {readFontPreference,resolveFontScale,useDeviceFontScale,writeFontPreference,type FontPreference} from "./fontScale";
 import {usePressMotion} from "../motion/Motion";
 
-const THEME_KEY="pizzeria-color-theme",FONT_KEY="pizzeria-font-size";
+const THEME_KEY="pizzeria-color-theme";
 function storedMode():ThemeMode|null{if(Platform.OS!=="web"||typeof localStorage==="undefined")return null;const value=localStorage.getItem(THEME_KEY);return value==="light"||value==="dark"?value:null;}
 function systemMode():ThemeMode{return Platform.OS==="web"&&typeof window!=="undefined"&&window.matchMedia?.("(prefers-color-scheme: dark)").matches?"dark":"light";}
-function storedFont():SystemFontSize{if(Platform.OS!=="web"||typeof localStorage==="undefined")return "medium";const value=localStorage.getItem(FONT_KEY);return value==="small"||value==="large"?value:"medium";}
-type ThemeContextValue={mode:ThemeMode;theme:Theme;fontSize:SystemFontSize;toggleTheme:()=>void;setFontSize:(size:SystemFontSize)=>void};
-const fallback:ThemeContextValue={mode:"light",theme:createTheme("light"),fontSize:"medium",toggleTheme:()=>{},setFontSize:()=>{}};
+/** fontPreference is per device; fontScale is what the whole app is rendering with right now. */
+type ThemeContextValue={mode:ThemeMode;theme:Theme;fontPreference:FontPreference;deviceFontScale:number;fontScale:number;toggleTheme:()=>void;setFontPreference:(preference:FontPreference)=>void};
+const fallback:ThemeContextValue={mode:"light",theme:createTheme("light"),fontPreference:"auto",deviceFontScale:1,fontScale:1,toggleTheme:()=>{},setFontPreference:()=>{}};
 const ThemeContext=createContext(fallback);
 export function ThemeProvider({children}:{children:ReactNode}){
- const [explicitMode,setExplicitMode]=useState<ThemeMode|null>(storedMode);const [system,setSystem]=useState<ThemeMode>(systemMode);const [fontSize,setFontState]=useState<SystemFontSize>(storedFont);const mode=explicitMode??system;
+ const [explicitMode,setExplicitMode]=useState<ThemeMode|null>(storedMode);const [system,setSystem]=useState<ThemeMode>(systemMode);const [fontPreference,setFontState]=useState<FontPreference>(readFontPreference);const deviceFontScale=useDeviceFontScale();const fontScale=resolveFontScale(fontPreference,deviceFontScale);const mode=explicitMode??system;
  useEffect(()=>{if(Platform.OS!=="web"||typeof window==="undefined")return;const media=window.matchMedia("(prefers-color-scheme: dark)");const change=()=>{if(!storedMode())setSystem(media.matches?"dark":"light");};media.addEventListener?.("change",change);return()=>media.removeEventListener?.("change",change);},[]);
  const toggleTheme=useCallback(()=>setExplicitMode(current=>{const next=(current??system)==="dark"?"light":"dark";if(Platform.OS==="web"&&typeof localStorage!=="undefined")localStorage.setItem(THEME_KEY,next);return next;}),[system]);
- const setFontSize=useCallback((size:SystemFontSize)=>{if(Platform.OS==="web"&&typeof localStorage!=="undefined")localStorage.setItem(FONT_KEY,size);setFontState(size);},[]);
- const theme=useMemo(()=>createTheme(mode,fontSize),[mode,fontSize]);
+ // Applied immediately: every themed style recomputes from the new scale on the next render.
+ const setFontPreference=useCallback((preference:FontPreference)=>{writeFontPreference(preference);setFontState(preference);},[]);
+ const theme=useMemo(()=>createTheme(mode,fontScale),[mode,fontScale]);
  useLayoutEffect(()=>{if(Platform.OS!=="web"||typeof document==="undefined")return;document.documentElement.style.colorScheme=mode;document.documentElement.style.backgroundColor=theme.colors.background;document.body.style.backgroundColor=theme.colors.background;const root=document.getElementById("root");if(root)root.style.backgroundColor=theme.colors.background;let style=document.getElementById("pizzeria-theme-browser-rules") as HTMLStyleElement|null;if(!style){style=document.createElement("style");style.id="pizzeria-theme-browser-rules";document.head.appendChild(style);}style.textContent=`input,textarea,select{color:${theme.colors.text};-webkit-text-fill-color:${theme.colors.text};caret-color:${theme.colors.primary};color-scheme:${mode}}input::placeholder,textarea::placeholder{color:${theme.colors.textSubtle};-webkit-text-fill-color:${theme.colors.textSubtle};opacity:1}input:-webkit-autofill,input:-webkit-autofill:hover,input:-webkit-autofill:focus{-webkit-text-fill-color:${theme.colors.text};box-shadow:0 0 0 1000px ${theme.colors.surfaceRaised} inset}html,body,#root{transition:background-color 190ms ease,color 190ms ease}button,[role="button"],[role="tab"],[role="radio"],[role="checkbox"],[role="link"],[role="menuitem"]{-webkit-tap-highlight-color:transparent;transition:filter 120ms ease,background-color 140ms ease,border-color 140ms ease,box-shadow 190ms ease}button:active,[role="button"]:active,[role="tab"]:active,[role="radio"]:active,[role="checkbox"]:active,[role="link"]:active,[role="menuitem"]:active{filter:brightness(.94)}@media (hover:hover){button:hover,[role="button"]:hover,[role="tab"]:hover,[role="radio"]:hover,[role="checkbox"]:hover,[role="link"]:hover,[role="menuitem"]:hover{filter:brightness(.97)}}:focus-visible{outline:3px solid ${theme.colors.focus};outline-offset:2px}@media (prefers-reduced-motion:reduce){html,body,#root,button,[role="button"],[role="tab"],[role="radio"],[role="checkbox"],[role="link"],[role="menuitem"]{transition:none!important}}`;},[mode,theme.colors]);
- const value=useMemo(()=>({mode,theme,fontSize,toggleTheme,setFontSize}),[mode,theme,fontSize,toggleTheme,setFontSize]);return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
+ const value=useMemo(()=>({mode,theme,fontPreference,deviceFontScale,fontScale,toggleTheme,setFontPreference}),[mode,theme,fontPreference,deviceFontScale,fontScale,toggleTheme,setFontPreference]);return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
 }
 export function useTheme(){return useContext(ThemeContext);}
 export function useThemedStyles<T>(factory:(theme:Theme)=>T):T{const {theme}=useTheme();return useMemo(()=>factory(theme),[factory,theme]);}

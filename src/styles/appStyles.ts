@@ -70,7 +70,8 @@ export const createAppStyles=(theme:Theme)=>StyleSheet.create({
     bottomIconActive: { backgroundColor: theme.colors.primary },
     bottomIcon: { color: theme.colors.textSubtle, fontSize: 18 * theme.fontScale, fontWeight: "900" },
     bottomIconActiveText: { color: theme.colors.primaryText },
-    bottomLabel: { color: theme.colors.textMuted, fontSize: 10 * theme.fontScale, fontWeight: "700", letterSpacing: .1, maxWidth: "100%", textAlign: "center" },
+    // Like the OS navigation bar, tab labels grow only up to 115 % so they never get cut.
+    bottomLabel: { color: theme.colors.textMuted, fontSize: 10 * Math.min(theme.fontScale, 1.15), fontWeight: "700", letterSpacing: .1, maxWidth: "100%", textAlign: "center" },
     bottomTextActive: { color: theme.colors.primary, fontWeight: "900" },
     loginSafeArea: { backgroundColor: theme.colors.background, flex: 1 },
     loginKeyboard: { flex: 1 },
@@ -373,7 +374,7 @@ export const createAppStyles=(theme:Theme)=>StyleSheet.create({
     ordersDetailCount: { backgroundColor: theme.colors.primarySurface, borderRadius: theme.radius.pill, color: theme.colors.primary, fontSize: 16 * theme.fontScale, fontWeight: "900", minWidth: 38, overflow: "hidden", paddingHorizontal: 11, paddingVertical: 7, textAlign: "center" },
     ordersDetailEmpty: { alignItems: "center", gap: 7, justifyContent: "center", minHeight: 180, padding: 24 },
     orderGroup: { marginBottom: 20 },
-    cancelReasonInput: {
+    cancelReasonInput: { fontSize: theme.typography.body.fontSize,
         backgroundColor: theme.colors.surfaceRaised,
         borderColor: theme.colors.danger,
         color: theme.colors.text,

@@ -13,6 +13,7 @@ import { useRemoteResource } from "../../hooks/useRemoteResource";
 import { useResponsiveLayout } from "../../layout/responsive";
 import { moneyMultiply, moneySum } from "../../money";
 import { ThemedText } from "../../theme/ThemedText";
+import { useTheme } from "../../theme/ThemeProvider";
 import { useWorkField, useWorkGuard } from "../../work/WorkProvider";
 import { LogoPicker } from "../administration/LogoPicker";
 import { Choices, moneyText, Section, useOpsStyles } from "../operations/ui";
@@ -35,6 +36,7 @@ const blank = (): Draft => ({ open: false, id: null, name: "", price: "", image:
 /** Packages and promotions: several products at one price, one flavor per piece, optional days. */
 export function ComboManager({ products, token }: { products: CatalogProduct[]; token: string }) {
   const ops = useOpsStyles();
+  const { theme } = useTheme();
   const { compact } = useResponsiveLayout();
   const gate = useActionGate();
   const form = useFormErrors();
@@ -185,7 +187,7 @@ export function ComboManager({ products, token }: { products: CatalogProduct[]; 
     <RemoteListStatus loading={combos.loading && !combos.data} error={combos.error} count={list.length} emptyText="Todavía no hay paquetes ni promociones." onRetry={combos.reload} />
     <View style={[ops.chips, { gap: 10 }]}>{list.map((combo) => <View key={combo.id} style={[ops.card, { flexBasis: 300, flexGrow: 1 }, !combo.active && ops.disabled]}>
       <View style={[ops.row, { alignItems: "center" }]}>
-        {combo.image_data_uri ? <Image source={{ uri: combo.image_data_uri }} style={{ width: 56, height: 56, borderRadius: 14 }} /> : <ThemedText style={{ fontSize: 32 }}>🍕</ThemedText>}
+        {combo.image_data_uri ? <Image source={{ uri: combo.image_data_uri }} style={{ width: 56, height: 56, borderRadius: 14 }} /> : <ThemedText style={{ fontSize: 32 * theme.fontScale }}>🍕</ThemedText>}
         <View style={ops.rowGrow}>
           <ThemedText style={ops.strong}>{combo.name}</ThemedText>
           <ThemedText style={ops.value}>${moneyText(combo.price)}</ThemedText>

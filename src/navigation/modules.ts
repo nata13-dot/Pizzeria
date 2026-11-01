@@ -9,13 +9,13 @@ export const moduleGroups: { id: ModuleGroupId; label: string }[] = [
   { id: "catalog", label: "Catálogo" }, { id: "analysis", label: "Análisis" }, { id: "administration", label: "Administración" },
 ];
 
-export type AppModule = { id: Screen; label: string; group: ModuleGroupId; icon: string; tone: IconTone; access: (user: NavigationUser) => boolean };
+export type AppModule = { id: Screen; label: string; /** Shorter name for the phone tab bar. */ short?: string; group: ModuleGroupId; icon: string; tone: IconTone; access: (user: NavigationUser) => boolean };
 const has = (user: NavigationUser, permission: string) => user.permissions?.includes("*") || user.permissions?.includes(permission) || false;
 const admin = (user: NavigationUser) => user.role.slug === "administrador" || has(user, "*");
 
 export const appModules: AppModule[] = [
   { id: "dashboard", label: "Resumen", group: "home", icon: "⌂", tone: "primary", access: user => admin(user) || has(user,"cash.manage") && has(user,"orders.view") && has(user,"inventory.view") },
-  { id: "pos", label: "Punto de venta", group: "sales", icon: "▣", tone: "success", access: user => admin(user) || has(user,"pos.use") },
+  { id: "pos", label: "Punto de venta", short: "Venta", group: "sales", icon: "▣", tone: "success", access: user => admin(user) || has(user,"pos.use") },
   { id: "orders", label: "Pedidos", group: "sales", icon: "≡", tone: "info", access: user => admin(user) || has(user,"pos.use") && has(user,"orders.view") },
   { id: "cash", label: "Caja del turno", group: "sales", icon: "$", tone: "warning", access: user => admin(user) || has(user,"cash.manage") },
   { id: "customers", label: "Clientes", group: "sales", icon: "C", tone: "primary", access: user => admin(user) || has(user,"customers.manage") },
